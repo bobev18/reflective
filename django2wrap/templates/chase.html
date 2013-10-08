@@ -1,0 +1,104 @@
+<html>
+    <head>
+        <title>Case Chaser</title>
+    </head>
+    <style>
+        body {font-family: "Lucida Grande", "Lucida Sans Unicode", Verdana, Arial, Helvetica, sans-serif; font-size:18px; }
+        p, h1, form, button { border:0; margin:0; padding:0; }
+        th, td { font-size:14px; border:1px solid black; padding:5px; }
+    </style>
+    <body>
+    <div id=\"stylized\" class=\"myblock\">
+        <form method="post">
+            {% csrf_token %}
+            <input type="checkbox" name="sendit" value="1" checked="checked">Send Email?<br>
+            <input type="submit" value="Start Chase Checker"><br><br>
+        </form>
+        {% if message %}
+            <h1>Chasing Results</h1>
+            <table> 
+            <tr><th>Parameter</th><th>WIGHTLINK</th><th>REFLECTIVE</th></tr>
+            <tr><td>States considered as pending to support:</td><td>['New', 'In Progress', 'Responded']</td><td>['New', 'Responded', 'Working on Resolution']</td></tr>
+            <tr><td>Open Cases Total Count:</td><td>{{wlk_total}}</td><td>{{st_total}}</td></tr>
+            <tr bgcolor="#FF0000"><td><b>Cases to Chase Count:</b></td><td><b>{{wlk_to_chase}}</b></td><td><b>{{st_to_chase}}</b></td></tr>
+            <tr><td>Cases with "Postponed Chase" Count:</td><td>{{wlk_postponed}}</td><td>{{st_postponed}}</td></tr>
+            <tr><td>Comment trigger date:</td><td>{{today}}</td></tr>
+            <tr><td>Bug trigger date (last Wed):</td><td>{{last_wednesday}}</td></tr>
+            </table>
+                        <br>
+                        <h2>WIGHTLINK</h2>
+                        <br>To Chase:
+                        <table style="border:1px solid black; padding:5px;">
+                        <tr><th>Case</th><th>Status</th><th>Subject</th><th>Last Comment</th><th>postpone chase</th><th>target chase</th></tr>
+                        {% for card in wlk_to_chase_list %}
+                            <tr><td><a href="https://eu1.salesforce.com/{{card.link}}" target="_blank">{{card.id}}</a></td><td> {{card.status}}</td><td> {{card.subject}}</td><td> {{card.last_comment}}</td><td> {{card.postpone}}</td><td> {{card.target_chase}}</td></tr>
+                        {% endfor %}
+                        </table>
+                        <br>Postponed:
+                        <table style="border:1px solid black; padding:5px;">
+                        <tr><th>Case</th><th>Status</th><th>Subject</th><th>Last Comment</th><th>postpone chase</th><th>target chase</th></tr>
+                        {% for card in wlk_postponed_list %}
+                            <tr><td><a href="https://eu1.salesforce.com/{{card.link}}" target="_blank">{{card.id}}</a></td><td> {{card.status}}</td><td> {{card.subject}}</td><td> {{card.last_comment}}</td><td> {{card.postpone}}</td><td> {{card.target_chase}}</td></tr>
+                        {% endfor %}
+                        </table>
+           
+                        <h2>REFLECTIVE</h2>
+                        <br>To Chase:
+                        <table style="border:1px solid black; padding:5px;">
+                        <tr><th>Case</th><th>Status</th><th>Subject</th><th>Last Comment</th><th>postpone chase</th><th>target chase</th></tr>
+                        {% for card in st_to_chase_list %}
+                            <tr><td><a href="https://emea.salesforce.com/{{card.link}}" target="_blank">{{card.id}}</a></td><td> {{card.status}}</td><td> {{card.subject}}</td><td> {{card.last_comment}}</td><td> {{card.postpone}}</td><td>{{card.target_chase}}</td></tr>
+                        {% endfor %}
+                        </table>
+                        <br>Postponed:
+                        <table style="border:1px solid black; padding:5px;">
+                        <tr><th>Case</th><th>Status</th><th>Subject</th><th>Last Comment</th><th>postpone chase</th><th>target chase</th></tr>
+                        {% for card in st_postponed_list %}
+                            <tr><td><a href="https://emea.salesforce.com/{{card.link}}" target="_blank">{{card.id}}</a></td><td> {{card.status}}</td><td> {{card.subject}}</td><td> {{card.last_comment}}</td><td> {{card.postpone}}</td><td> {{card.target_chase}}</td></tr>
+                        {% endfor %}
+                        </table>
+
+                        {# <h2>Debug</h2> {% debug %} #}
+                        
+            {% comment %} 
+              <table>
+              <tr><td>States considered as pending to support:</td><td>{{support_keys}}</td></tr>
+              <tr><td>Open Cases Total Count:</td><td>{{cardlist_len}}</td></tr>
+              <tr><td>Cases to Chase Count:</td><td>{{chase_miss_len}}</td></tr>
+              <tr><td>Cases with "Postponed Chase" Count:</td><td>{{postponed_len}}</td></tr>
+              </table><br>
+              <br>To Chase:
+              {% if {{chase_miss_len}} %}
+                  <table style="border:1px solid black; padding:5px;">
+                  <tr><th>Case</th><th>Status</th><th>Subject</th><th>Last Comment</th><th>postpone chase</th><th>target chase</th></tr>
+                  {% for card in chase_miss %}
+                      <tr><td>{{card.id}}</td><td> {{card.status}}</td><td> {{card.subject}}</td><td> {{card.last_comment}}</td><td> {{card.postpone}}</td><td> {{card.target_chase}}</td></tr>
+                  </table>
+              {% else %}
+                  Nothing to chase<br>
+
+              if len(postponed_chase) > 0:# and destination != 'team':
+                  showit('<br>Postponed:')
+                  showit('<table style="border:1px solid black; padding:5px;">\n<tr><th>Case</th><th>Status</th><th>Subject</th><th>Last Comment</th><th>postpone chase</th><th>target chase</th></tr>')
+                  for card in postponed_chase:
+                      # if 'postpone' in card:
+                      #     postpone = card['postpone']
+                      # else:
+                      #     postpone = '-'
+                      # last_comment = card['comments'][0][:-1]
+                      showit(card['id'], card['status'], card['subject'], card['last_comment'], card['postpone'], card['target_chase'], tipe = 'tbl')
+                  showit('</table>')
+              showit('<br><br>')
+
+              {% autoescape off %}
+              {{message}}
+              {% endautoescape %}
+            
+            {% endcomment %}
+            <br>
+        {% else %}
+            Last run results ({{ last_time }}): <a href="last_chase_ruslts.html">here</a><br>
+        {% endif %}
+    </div>
+    </body>
+</html>

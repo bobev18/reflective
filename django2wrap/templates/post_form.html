@@ -1,0 +1,10 @@
+<section class="post">
+    <span class="errors">{{ form.errors.text.pop }}</span>
+    <form method="POST" action="/">
+    {{ form.non_field_errors }}
+        {% csrf_token %}
+        {{ form.text.errors }}
+        <textarea name="text" rows="3" placeholder="Напиши хайкуто тук"></textarea>
+        <input type="submit" value="Жега">
+    </form>
+</section>

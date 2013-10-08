@@ -1,0 +1,10 @@
+*.log
+*.pot
+*.pyc
+local_settings.py
+django2wrap/templates/last_chase_ruslts.html
+start.bat
+chasecheck/bicrypt.py
+__pycache__/
+*mysqldb.cnf
+django4r.db.sqlite3

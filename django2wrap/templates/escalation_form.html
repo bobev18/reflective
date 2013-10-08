@@ -1,0 +1,134 @@
+<html>
+<title>Escalation Form</title>
+<style>
+body{
+font-family:"Lucida Grande", "Lucida Sans Unicode", Verdana, Arial, Helvetica, sans-serif;
+font-size:12px;
+}
+p, h1, form, button{border:0; margin:0; padding:0;}
+.spacer{clear:both; height:1px;}
+/* ----------- My Form ----------- */
+.myform1{
+margin:0 auto;
+padding:14px;
+}
+.myform{
+margin:0 auto;
+width:900px;
+padding:14px;
+}
+
+/* ----------- stylized ----------- */
+#stylized th {
+vertical-align: top;
+}
+#stylized{
+border:solid 2px #b7ddf2;
+background:#ebf4fb;
+}
+#stylized h1 {
+display:block;
+text-align:center;
+font-size:18px;
+font-weight:bold;
+margin-bottom:8px;
+}
+#stylized p{
+font-size:11px;
+color:#666666;
+margin-bottom:20px;
+border-bottom:solid 1px #b7ddf2;
+padding-bottom:10px;
+}
+#stylized label{
+display:block;
+vertical-align:top;
+font-weight:bold;
+text-align:right;
+width:140px;
+float:right;
+}
+#stylized .helptext{
+margin-bottom: 20px; 
+color:#666666;
+display:block;
+font-size:11px;
+font-weight:normal;
+text-align:right;
+width:200px;
+}
+#stylized input{
+float:left;
+font-size:12px;
+padding:4px 2px;
+border:solid 1px #aacfe4;
+width:200px;
+margin:2px 0 2px 10px;
+}
+#stylized input.text{
+float:left;
+font-size:12px;
+padding:4px 2px;
+border:solid 1px #aacfe4;
+width:200px;
+margin:2px 0 2px 10px;
+}
+#stylized input.radio{
+float:left;
+font-size:12px;
+padding:4px 2px;
+border:solid 1px #aacfe4;
+width:20px !important;
+margin:2px 0 2px 10px;
+}
+#stylized textarea{
+float:left;
+font-size:12px;
+padding:4px 2px;
+border:solid 1px #aacfe4;
+width:600px;
+margin:2px 0 2px 10px;
+}
+#stylized select{
+float:left;
+font-size:12px;
+padding:4px 2px;
+border:solid 1px #aacfe4;
+width:200px;
+margin:2px 0 2px 10px;
+}
+#stylized button{
+clear:both;
+/*margin-left:150px;*/
+width:125px;
+height:31px;
+background:#666666 url(img/button.png) no-repeat;
+text-align:center;
+line-height:31px;
+color:#FFFFFF;
+font-size:11px;
+font-weight:bold;
+float:center;
+}
+</style>
+
+<body>
+<div id="stylized" class="myform">
+<h1>Escalation Form</h1>
+
+{% if form.errors %}
+        <p style="color: red;">
+            Please correct the error{{ form.errors|pluralize }} below.
+        </p>
+    {% endif %}
+
+    <form id="form" action="" method="post">
+        <table>
+            {{ form.as_table }}
+	        <tr><td colspan="2" style="text-align:center;"><input style="float:center;" type="submit" value="Submit"></td><td></td></tr>
+        </table>
+        {% csrf_token %}
+    </form>
+</div>
+</body>
+</html>
