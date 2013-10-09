@@ -52,10 +52,10 @@ class Shift(models.Model):
     tipe = models.CharField(max_length=7, choices=(('Morning', 'Morning'), ('Middle', 'Middle'), ('Late', 'Late')), default='Morning')
 
     def __str__(self):
-        return str(self.date) + ':' + self.tipe
+        return self.date.strftime("%d/%m/%y %H:%M") + ':' + self.tipe
 
     def items(self):
-        return [self.agent.name, timezone.make_aware(self.date, timezone.get_current_timezone()).strftime("%d/%m/%y %H:%M"), self.tipe, self.color]
+        return [self.agent.name, self.date.strftime("%d/%m/%y %H:%M"), self.tipe,] # self.color]
 
 class Case(models.Model):
     #'status', 'actual', 'name', 'created', 'udata', 'system', 'sla', 'reason', 'link', 'result', 'closed', 'casetimes', 'closedate', 'problem', 'subject', 'id', 'severity'
@@ -102,14 +102,23 @@ class Case(models.Model):
         return self.number
 
 class Call(models.Model):
-    agent = models.ForeignKey(Agent)
-    shift = models.ForeignKey(Shift)
+    agent = models.ForeignKey(Agent, default=None, null=True) # needed until I include the schedule from before Dec 2012
+    shift = models.ForeignKey(Shift, default=None, null=True) # needed until I include the schedule from before Dec 2012
     case = models.ForeignKey(Case, blank=True, null=True)
     filename = models.CharField(max_length=128, unique=True)
     date = models.DateTimeField()
         
     def __str__(self):
         return self.filename
+
+    def items(self):
+        if self.agent:
+            agent_name = self.agent.name
+        else:
+            agent_name = 'n/a'
+
+        play_button = '<a href="/listen/' + str(self.id) + '/" target="_blank">&#9658;</a>'
+        return [play_button, self.filename, agent_name, self.date.strftime("%d/%m/%y"), self.case,] #self.shift.date]
 
 class Comment(models.Model):
     agent = models.ForeignKey(Agent, blank=True, null=True)

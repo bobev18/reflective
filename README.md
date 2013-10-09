@@ -45,7 +45,9 @@ TODOS:
 DEPENDANCY:
 
 	shifts uses gspread
-	MySQL connector for py3 from https://github.com/PyMySQL/PyMySQL (had to install manually, as pip install failed)
+	models use pytz (https://pypi.python.org/pypi/pytz/)
+  ?? MySQL connector for py3 from https://github.com/PyMySQL/PyMySQL (had to install manually, as pip install failed)
+
 	
 DB issues working on SQLite3:
  - on WinXP does not accept any input that is prompted during creation of superuser;

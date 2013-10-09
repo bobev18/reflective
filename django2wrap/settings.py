@@ -165,5 +165,5 @@ LOGGING = {
 fp = os.path.join(BASE_DIR, 'local_settings.py')
 try:
     exec(open(fp,'r').read())
-except:
+except :
     print('Failed to import', fp)

@@ -91,7 +91,7 @@ class Shifts:
         #   working with the specific range where the date should be by convetion
         init_date_range = wks.range('B1:B2')
         #   year is hardcoded -- could be derived from "current" year, but that's not urgent
-        self.init_date =  datetime.strptime(init_date_range[0].value + ' ' + init_date_range[1].value + ' ' + init_year, "%d %b %y")
+        self.init_date =  datetime.strptime(init_date_range[0].value + ' ' + init_date_range[1].value + ' ' + init_year, "%d %b %y", )
 
     def download_data(self, user, password):
         # returns list of tuple of the names for the agent that worked on morning, middle and late shifts
@@ -124,7 +124,8 @@ class Shifts:
         box = []
         for i in range(len(biglist)):
             day = biglist[i]
-            loop_date = self.init_date + timedelta(days=i)
+            aware_date = timezone.make_aware(self.init_date, timezone.get_default_timezone())
+            loop_date = aware_date + timedelta(days=i)
             # print(type(loop_date), loop_date,'|',type(loop_date.date()), loop_date.date())
             tipes = [('Morning', 7), ('Middle', 10), ('Late', 14)]
             

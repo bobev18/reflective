@@ -149,13 +149,16 @@ def license_form(request):
         form = LicenseForm()
     return render(request, 'license_form.html', {'form': form})
 
-
-def listen(request, agent = 'Boris', file_name = '+000000_2012.06.15.Fri.17.40.37.mp3'):
+def listen(request, agent = 'Boris', file_name = '+000000_2012.06.15.Fri.17.40.37.mp3', callid = None):
     # note that MP3_STORAGE should not be in MEDIA_ROOT
-    fname = os.path.join(settings.MP3_STORAGE, agent, file_name)
-    f = open(fname, "rb")
+    if callid:
+        fname = os.path.join(settings.MP3_STORAGE, Call.objects.get(id=callid).agent.name, Call.objects.get(id=callid).filename)
+    else:
+        fname = os.path.join(settings.MP3_STORAGE, agent, file_name)
+    with open (fname, "rb") as f:
+        data = f.read()
     response = HttpResponse()
-    response.write(f.read())
+    response.write(data)
     response['Content-Type'] = 'audio/mp3'
     response['Content-Length'] = os.path.getsize(fname)
     return response
@@ -174,14 +177,14 @@ def sync(request):
             sched = shifts.Shifts()
             if action == 'Sync':
                 sched.wipe_db()
-                sched.download_data(**GLOGIN)
+                sched.download_data(**settings.GLOGIN)
                 sched.save_db_data()
                 results = sched.data
             elif action == 'View':
                 results = [ z.items() for z in Shift.objects.all() ]
-                results.insert(0,['Name', 'date time', 'Type', 'Color Code',])
-            elif action == 'Wipe':
-                sched.wipe_db()
+                results.insert(0,['Name', 'date time', 'Type',]) # 'Color Code',])
+            # elif action == 'Wipe':
+            #     sched.wipe_db()
             else:
                 errors = ['no such action']
         elif sys == 'calls':
@@ -190,11 +193,13 @@ def sync(request):
                 listing.wipe_db()
                 listing.load()
                 results = listing.data
+                # listing.save_pickle_data()
                 listing.save_db_data()
             elif action == 'View':
-                results = Call.objects.all()
-            elif action == 'Wipe':
-                listing.wipe_db()
+                results = [ z.items() for z in Call.objects.all() ]
+                results.insert(0,['|>','File', 'Agent', 'Time', 'Case',])
+            # elif action == 'Wipe':
+            #     listing.wipe_db()
             else:
                 errors = ['no such action']
         else:
