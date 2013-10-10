@@ -107,9 +107,18 @@ class Call(models.Model):
     case = models.ForeignKey(Case, blank=True, null=True)
     filename = models.CharField(max_length=128, unique=True)
     date = models.DateTimeField()
+    # contact = models.CharField(max_length=128, default=None, null=True)
         
     def __str__(self):
         return self.filename
+
+    # def wipe_table(self):
+    #     # this is needed to overcome bug: https://code.djangoproject.com/ticket/16426
+    #     # use Call.wipe_table() instead of Call.objects.all().delete()
+    #     cursor = connection.cursor()
+    #     table_name = self.model._meta.db_table
+    #     sql = "DELETE FROM %s;" % (table_name, )
+    #     cursor.execute(sql)
 
     def items(self):
         if self.agent:
@@ -136,10 +145,13 @@ class Comment(models.Model):
     def __str__(self):
         return self.case + ': ' + str(self.added)
 
-
 class Resource(models.Model):
     name = models.CharField(max_length=30)
     last_sync = models.DateTimeField() # last full sync
+    # last_sync_fields = ? DictField
+    #   I need event log, to store info on what update was pushed when, and how up-to-date is every subset of the DB
+    #   or I can add "creation timestamp" for each record
+    #   actually I don't need that for any record besides Cases ...and maybe Schedule
     
     def __str__(self):
         return self.name

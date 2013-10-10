@@ -706,9 +706,12 @@ def main_chase():
             showit('No open cases<br>')
 
         for card in cardlist:
-            card['last_comment'] = card['comments'][0][:-1]
-            if 'postpone' not in card:
-                card['postpone'] = '-'
+            if len(card['comments']) > 0:
+                card['last_comment'] = card['comments'][0][:-1]
+                if 'postpone' not in card:
+                    card['postpone'] = '-'
+            else:
+                card['last_comment'] = ''
         
         # cardlist = sorted(cardlist, key = lambda x: int(x['id']))
         chase_miss, postponed_chase, tmp_cardlist = find_chase_miss(cardlist)

@@ -27,13 +27,17 @@
                 {% endfor %}
             </select>
             <br>
-            <input name="action" type="submit" value="View">
-            <input name="action" type="submit" value="Sync">
-            <input name="action" type="submit" value="Wipe">
+            {% for action in actions %}
+                <input name="action" type="submit" value="{{action}}">
+            {% endfor %}
+            <!-- <input name="action" type="submit" value="Sync"> -->
         </form>
     </div>
     {% if results %}
         {% simple_table results %}
     {% endif %}
+
+    DEBUG:<br>
+    {{actions}}
     </body>
 </html>

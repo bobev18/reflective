@@ -8,34 +8,9 @@ from django.shortcuts import render
 from django2wrap.forms import EscalationForm, LicenseForm
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
 import django2wrap.shifts as shifts
-import django2wrap.calls as phonecalls
+# import django2wrap.calls# as phonecalls
+from django2wrap.calls import PhoneCalls # as phonecalls
 
-ESCALATION_CONTACTS = ['Vess <vesselin.drangajov@reflective.com>', 'Graham <graham.parsons@reflective.com>', 'Iliyan <iliyan@reflectivebg.com>', 'Support <support@reflective.com>']
-LICENSE_CONTACTS = ['License Department <licenserequest@reflective.com>', 'Iliyan <iliyan@reflectivebg.com>', 'Support <support@reflective.com>']
-
-ESCALATION_MESSAGE_BODY = """<html>
-<style>
-body{
-font-family:\"Lucida Grande\", \"Lucida Sans Unicode\", Verdana, Arial, Helvetica, sans-serif;
-font-size:10px;
-}
-p, h1, form, button { border:0; margin:0; padding:0; }
-</style>
-<body>
-<div id=\"stylized\" class=\"myblock\">
-<h1>Escalation</h1>
-<table style="padding:5px;">
-<tr><td><label>Submitted by</label></td><td>*agent*</td></tr>
-<tr><td><label>Case</label></td><td>*case*</td></tr>
-<tr><td><label>Priority</label></td><td>*priority*</td></tr>
-<tr><td><label>Company</label></td><td>*company*</td></tr>
-<tr><td><label>Contact</label></td><td>*contact*</td></tr>
-<tr><td><label>Description</label></td><td>*description*</td></tr>
-<tr><td><label>Investigated</label></td><td>*investigated*</td></tr>
-</table>
-</div>
-</body>
-</html>"""
 
 def homepage(request):
     return HttpResponse('<html><body>Welcome<br><br><a href="/chase/">Chaser</a><br><a href="https://78.142.1.136/mwiki/">Wiki</a><br><a href="/escalation/">Escalation Form</a><br><a href="/license/">License Form</a></body></html>')
@@ -46,7 +21,7 @@ def escalation_form(request):
         if form.is_valid():
             cd = form.cleaned_data
             subject = "escalation case: " + cd['case'] + " priority: " + cd['priority']
-            message = ESCALATION_MESSAGE_BODY
+            message = settings.ESCALATION_MESSAGE_BODY
             message = message.replace("*agent*", cd['agent'])
             message = message.replace("*case*", cd['case'])
             message = message.replace("*priority*", cd['priority'])
@@ -57,7 +32,7 @@ def escalation_form(request):
             if cd['case'] == "0000":
                 to = ['Iliyan <iliyan@reflectivebg.com>'] #, peter@reflectivebg.com']
             else:
-                to = ESCALATION_CONTACTS
+                to = settings.ESCALATION_CONTACTS
             mymail = EmailMultiAlternatives(subject, message, 'Support <support@reflective.com>', to, headers = {'Reply-To': 'support@reflective.com'})
             mymail.attach_alternative(message, 'text/html')
             mymail.send(fail_silently=False)
@@ -66,44 +41,13 @@ def escalation_form(request):
         form = EscalationForm()
     return render(request, 'escalation_form.html', {'form': form})
 
-LICENSE_MESSAGE_BODY = """<html>
-<style>
-body{
-font-family:\"Lucida Grande\", \"Lucida Sans Unicode\", Verdana, Arial, Helvetica, sans-serif;
-font-size:10px;
-}
-p, h1, form, button { border:0; margin:0; padding:0; }
-</style>
-<body>
-<div id=\"stylized\" class=\"myblock\">
-<h1>License Request</h1>
-<table style="padding:5px;">
-<tr><td><label>Submitted by</label></td><td>*agent*</td></tr>
-<tr><td><label>Case</label></td><td>*case*</td></tr>
-<tr><td><label>Priority</label></td><td>*priority*</td></tr>
-<tr><td><label>Requestor organization type</label></td><td>*requestor*</td></tr>
-<tr><td><label>Company</label></td><td>*company*</td></tr>
-*Partner Company*
-<tr><td><label>Contact</label></td><td>*contact*</td></tr>
-<tr><td><label>HostID</label></td><td>*hostid*</td></tr>
-<tr><td><label>Product</label></td><td>*product*</td></tr>
-<tr><td><label>Type</label></td><td>*licensetype*</td></tr>
-*period*
-<tr><td><label>License Status</label></td><td>*licensestatus*</td></tr>
-<tr><td><label>License Function</label></td><td>*licensefunction*</td></tr>
-*notes*
-</table>
-</div>
-</body>
-</html>"""
-
 def license_form(request):
     if request.method == 'POST':
         form = LicenseForm(request.POST, request.FILES)
         if form.is_valid():
             cd = form.cleaned_data
             subject = "license request case: " + cd['case'] + " priority: " + cd['priority']
-            message = LICENSE_MESSAGE_BODY
+            message = settings.LICENSE_MESSAGE_BODY
             message = message.replace("*agent*", cd['agent'])
             message = message.replace("*case*", cd['case'])
             message = message.replace("*priority*", cd['priority'])
@@ -132,7 +76,7 @@ def license_form(request):
             if cd['case'] == "0000":
                 to = ['Iliyan <iliyan@reflectivebg.com>'] #, peter@reflectivebg.com']
             else:
-                to = LICENSE_CONTACTS
+                to = settings.LICENSE_CONTACTS
 
             mymail = EmailMultiAlternatives(subject, message, 'Support <support@reflective.com>', to, headers = {'Reply-To': 'support@reflective.com'})
             mymail.attach_alternative(message, 'text/html')
@@ -152,7 +96,8 @@ def license_form(request):
 def listen(request, agent = 'Boris', file_name = '+000000_2012.06.15.Fri.17.40.37.mp3', callid = None):
     # note that MP3_STORAGE should not be in MEDIA_ROOT
     if callid:
-        fname = os.path.join(settings.MP3_STORAGE, Call.objects.get(id=callid).agent.name, Call.objects.get(id=callid).filename)
+        the_call = Call.objects.get(id=callid)
+        fname = os.path.join(settings.MP3_STORAGE, the_call.agent.name, the_call.filename)
     else:
         fname = os.path.join(settings.MP3_STORAGE, agent, file_name)
     with open (fname, "rb") as f:
@@ -164,9 +109,17 @@ def listen(request, agent = 'Boris', file_name = '+000000_2012.06.15.Fri.17.40.3
     return response
 
 def sync(request):
-    systems = ['shifts', 'calls']
-    actions = ['Sync', 'View', 'Wipe'] #make this Meta -- passing to form and to coresponding method
+    actions = ['Update', 'View', 'Reload'] #make this Meta -- passing to form and to coresponding method getattr(foo, 'bar')()
+    # update - pull specific subset of a resourse, add the new ones, and update old records in db
+    #   update would need more form fields (agent, time period[hour,day,week, month], )
+    # view   - show records from db - may use same subset fields as in "update"
+    # reload - empty db, pull all records from resourse, and save them to db
+    # load   - (basic) pull all records from resourse
+    # wipe   - (basic) empty db
+    # save   - (basic) save the data to db
+
     resources = Resource.objects.all()
+    # resources = ['Shift', 'Call']
     if request.method == 'POST':
         # form = ()
         # cd = form.cleaned_data
@@ -175,26 +128,26 @@ def sync(request):
         # print('sys', sys)
         if sys == 'shifts':
             sched = shifts.Shifts()
-            if action == 'Sync':
+            if action == 'Reload':
                 sched.wipe_db()
                 sched.download_data(**settings.GLOGIN)
                 sched.save_db_data()
                 results = sched.data
+            elif action == 'Update':
+                pass
             elif action == 'View':
                 results = [ z.items() for z in Shift.objects.all() ]
-                results.insert(0,['Name', 'date time', 'Type',]) # 'Color Code',])
+                results.insert(0, ['Name', 'date time', 'Type',]) # 'Color Code',])
             # elif action == 'Wipe':
             #     sched.wipe_db()
             else:
                 errors = ['no such action']
         elif sys == 'calls':
-            listing = phonecalls.Calls()
-            if action == 'Sync':
-                listing.wipe_db()
-                listing.load()
-                results = listing.data
-                # listing.save_pickle_data()
-                listing.save_db_data()
+            listing = PhoneCalls()
+            if action == 'Reload':
+                results = listing.reload()
+            elif action == 'Update':
+                pass
             elif action == 'View':
                 results = [ z.items() for z in Call.objects.all() ]
                 results.insert(0,['|>','File', 'Agent', 'Time', 'Case',])
