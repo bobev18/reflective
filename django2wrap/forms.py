@@ -1,4 +1,6 @@
 from django import forms
+from django.forms.extras.widgets import SelectDateWidget
+from django2wrap.models import Agent, Resource #, Shift, Case, Call, Comment
 
 TYPE_CHOICES = (('Permanent', 'Permanent (full)'), ('Rental', 'Rental'), ('Standard Trial', 'Standard Trial'), ('Non Standard Trial', 'Non Standard Trial'), ('Consultant Annual', 'Consultant Annual'), ('Project', 'Project'), ('Non-commercial', 'Non-commercial'))
 STATUS_CHOICES = (
@@ -34,4 +36,9 @@ class LicenseForm(forms.Form):
     function = forms.ChoiceField(choices=FUNCTION_CHOICES, help_text='What is the license function', label='License Function')
     notes = forms.CharField(widget=forms.Textarea, help_text='Notes (optional)', required=False)
     host_id_change_form = forms.FileField(widget=forms.FileInput, label='HostID Change Request Form', help_text='Change request form signed by the client (optional)', required=False)
- 
+
+class SyncDetailsForm(forms.Form):
+    system = forms.ChoiceField(choices=tuple( (z.name,z.name) for z in Resource.objects.all() ), help_text='Resource')
+    agent = forms.ChoiceField(choices=((None, '-----'),) + tuple(set( (z.name,z.name) for z in Agent.objects.all() )), help_text='Agent', required=False, initial=None)
+    from_date = forms.DateField(widget=SelectDateWidget(years = tuple( str(z + 2010) for z in range(4) )), required=False)
+    # to_date = forms.DateField(widget=SelectDateWidget(years = set( str(z + 2010) for z in range(4) )), required=False)

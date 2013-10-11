@@ -5,7 +5,7 @@ from django.core.mail import send_mail, mail_admins, mail_managers, EmailMessage
 from email.mime.multipart import MIMEBase
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
-from django2wrap.forms import EscalationForm, LicenseForm
+from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
 import django2wrap.shifts as shifts
 # import django2wrap.calls# as phonecalls
@@ -118,44 +118,58 @@ def sync(request):
     # wipe   - (basic) empty db
     # save   - (basic) save the data to db
 
-    resources = Resource.objects.all()
-    # resources = ['Shift', 'Call']
     if request.method == 'POST':
-        # form = ()
-        # cd = form.cleaned_data
-        sys = request.POST['system']
-        action = request.POST['action']
-        # print('sys', sys)
-        if sys == 'shifts':
-            sched = shifts.Shifts()
-            if action == 'Reload':
-                sched.wipe_db()
-                sched.download_data(**settings.GLOGIN)
-                sched.save_db_data()
-                results = sched.data
-            elif action == 'Update':
-                pass
-            elif action == 'View':
-                results = [ z.items() for z in Shift.objects.all() ]
-                results.insert(0, ['Name', 'date time', 'Type',]) # 'Color Code',])
-            # elif action == 'Wipe':
-            #     sched.wipe_db()
+        form = SyncDetailsForm(request.POST)
+        if form.is_valid():
+            clean_data = form.cleaned_data
+            if clean_data['agent'] == 'None':
+                clean_data['agent'] = None
+            if clean_data['from_date']:
+                clean_data['from_date'] = datetime(*tuple( getattr(clean_data['from_date'], z) for z in ['year', 'month', 'day'] ))
+            sys = clean_data['system']
+            action = request.POST['action']
+            # print('sys', sys)
+            if sys == 'shifts':
+                sched = shifts.Shifts()
+                if action == 'Reload':
+                    sched.wipe_db()
+                    sched.download_data(**settings.GLOGIN)
+                    sched.save_db_data()
+                    results = sched.data
+                elif action == 'Update':
+                    pass
+                elif action == 'View':
+                    results = [ z.items() for z in Shift.objects.all() ]
+                    results.insert(0, ['Name', 'date time', 'Type',]) # 'Color Code',])
+                # elif action == 'Wipe':
+                #     sched.wipe_db()
+                else:
+                    errors = ['no such action']
+            elif sys == 'calls':
+                listing = PhoneCalls()
+                print('clean_data', clean_data)
+                if action == 'Reload':
+                    results = listing.reload()
+                elif action == 'Update':
+                    results = listing.update(clean_data['agent'], clean_data['from_date'])
+                elif action == 'View':
+                    results = listing.view(clean_data['agent'], clean_data['from_date'])
+                    
+                # elif action == 'Wipe':
+                #     listing.wipe_db()
+                else:
+                    errors = ['no such action']
             else:
-                errors = ['no such action']
-        elif sys == 'calls':
-            listing = PhoneCalls()
-            if action == 'Reload':
-                results = listing.reload()
-            elif action == 'Update':
-                pass
-            elif action == 'View':
-                results = [ z.items() for z in Call.objects.all() ]
-                results.insert(0,['|>','File', 'Agent', 'Time', 'Case',])
-            # elif action == 'Wipe':
-            #     listing.wipe_db()
-            else:
-                errors = ['no such action']
-        else:
-            errors = ['no such system']
+                errors = ['no such system']
             
+    else:
+        form = SyncDetailsForm()
     return render(request, 'sync.html', locals())
+
+    # resources = Resource.objects.all()
+    # agents = Agent.objects.all()
+    # # resources = ['Shift', 'Call']
+    # if request.method == 'POST':
+    #     # form = ()
+    #     # cd = form.cleaned_data
+    # return render(request, 'sync.html', locals())            

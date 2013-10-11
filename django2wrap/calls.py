@@ -44,23 +44,6 @@ class PhoneCalls:
 
         return time_of_call, contact
 
-    def reload(self):
-        self.wipe()
-        self.load()
-        self.save()
-        resource = Resource.objects.get(name='calls')
-        resource.last_sync = datetime.now()
-        resource.save()
-        return self.data
-
-    def reload(self, target_agent_name = None, target_time = None):
-        self.load(target_agent_name, target_time)
-        self._load()
-        resource = Resource.objects.get(name='calls')
-        resource.last_sync = datetime.now()
-        resource.save()
-        return self.data
-    
     def load(self, target_agent_name = None, target_time = None):
         agent_dirs = os.listdir(settings.MP3_STORAGE)
         available_data_agents = set([ z.name for z in Agent.objects.all() if z.name in agent_dirs ])
@@ -77,10 +60,11 @@ class PhoneCalls:
 
     def load_agent(self, agent_folder, target_time):
         result_box = []
-        for filename in os.listdir(os.path.join(settings.MP3_STORAGE, agent_folder))[:20]:
+        print('target time', target_time)
+        for filename in os.listdir(os.path.join(settings.MP3_STORAGE, agent_folder)):
             if filename.endswith('.mp3'):
                 file_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(settings.MP3_STORAGE, agent_folder, filename)))
-                if (target_time and target_time > file_time) or not target_time:
+                if (target_time and target_time < file_time) or not target_time:
                     result = self._process_file(filename, agent_folder, file_time)
                     if result: result_box.append(result)
         return result_box
@@ -148,9 +132,7 @@ class PhoneCalls:
         kwstr = lambda **kwarg: str(kwarg)
         if self.data:
             for call in self.data:
-                print(kwstr(**call))
                 find = Call.objects.filter(**call)
-                print('find:', find)
                 if not find:
                     p = Call(**call)
                     p.save()
@@ -168,12 +150,50 @@ class PhoneCalls:
         # Call.objects.wipe_table()
         # use Call.wipe_table() instead of Call.objects.all().delete()
         # this is needed to overcome bug: https://code.djangoproject.com/ticket/16426
-        
-    def load_pickle_data(self):
-        try:
-            self.data = pickle.load(open(PICKLE_PATHFILE + ".pickle", "rb"))
-            return True
-        except IOError as e:
-            if self.debug > 0:
-                print('Loading data form', PICKLE_PATHFILE, '.pickle failed :', e)
-            return False
+    
+    def reload(self):
+        self.wipe()
+        self.load()
+        self.save()
+        resource = Resource.objects.get(name = 'calls')
+        resource.last_sync = datetime.now()
+        resource.save()
+        return self.data
+
+    def update(self, target_agent_name = None, target_time = None):
+        self.load(target_agent_name, target_time)
+        resource = Resource.objects.get(name = 'calls')
+        resource.last_sync = datetime.now()
+        resource.save()
+        self.sync()
+        return self.data
+
+    def view(self, target_agent_name = None, target_time = None):
+        def itemize(call):
+            if call.agent:
+                agent_name = call.agent.name
+            else:
+                agent_name = 'n/a'
+
+            play_button = '<a href="/listen/' + str(call.id) + '/" target="_blank">&#9658;</a>'
+            return [play_button, agent_name, call.date.strftime("%d/%m/%y %H:%M"), call.case, 'contact', call.filename,] #self.shift.date]
+
+        find = Call.objects.all()
+        if target_agent_name:
+            find = find.filter(agent = target_agent_name)
+        if target_time:
+            find = find.filter(date__gt = target_time)
+
+        results = [ itemize(z) for z in find ]
+        results.insert(0,['|>', 'Agent', 'Time', 'Case', 'Contact', 'File',])
+        return results
+
+
+    # def load_pickle_data(self):
+    #     try:
+    #         self.data = pickle.load(open(PICKLE_PATHFILE + ".pickle", "rb"))
+    #         return True
+    #     except IOError as e:
+    #         if self.debug > 0:
+    #             print('Loading data form', PICKLE_PATHFILE, '.pickle failed :', e)
+    #         return False
