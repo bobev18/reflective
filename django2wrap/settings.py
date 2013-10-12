@@ -1,10 +1,17 @@
 import os
 
+# Django settings for django2wrap project.
 SITE_ROOT = os.path.realpath(os.path.dirname(__file__)) # + '/'
 PROJECT_NAME = os.path.basename(os.path.dirname(__file__))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Django settings for django2wrap project.
+fp = os.path.join(BASE_DIR, 'local_settings.py')
+try:
+    exec(open(fp,'r').read())
+except :
+    print('!'*32, 'Failed to import', fp)
+    print()
+    exit(1)
 
 DEBUG = True
 TEMPLATE_DEBUG = DEBUG
@@ -162,8 +169,3 @@ LOGGING = {
     }
 }
 
-fp = os.path.join(BASE_DIR, 'local_settings.py')
-try:
-    exec(open(fp,'r').read())
-except :
-    print('Failed to import', fp)

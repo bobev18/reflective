@@ -38,6 +38,9 @@ class LicenseForm(forms.Form):
     host_id_change_form = forms.FileField(widget=forms.FileInput, label='HostID Change Request Form', help_text='Change request form signed by the client (optional)', required=False)
 
 class SyncDetailsForm(forms.Form):
+    # actions = forms.ChoiceField(choices=tuple( (z,z) for z in ['Update', 'View', 'Reload'] ))
+    ## dont use actions as a dopdown box -- it's rendered as separate submit buttons.
+    ### TODO: make my own form.Field that handles the above situation.
     system = forms.ChoiceField(choices=tuple( (z.name,z.name) for z in Resource.objects.all() ), help_text='Resource')
     agent = forms.ChoiceField(choices=((None, '-----'),) + tuple(set( (z.name,z.name) for z in Agent.objects.all() )), help_text='Agent', required=False, initial=None)
     from_date = forms.DateField(widget=SelectDateWidget(years = tuple( str(z + 2010) for z in range(4) )), required=False)

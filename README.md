@@ -23,6 +23,10 @@ This way, the template will render an hidden element with the value set to a tok
 For more info, check the Django documentation at: https://docs.djangoproject.com/en/1.3/ref/contrib/csrf/
 """
 
+python manage.py schemamigration django2wrap --auto
+python manage.py migrate django2wrap
+
+
 ==================================
 **    Notes on the CHASE app    **
 ==================================
@@ -41,6 +45,11 @@ TODOS:
     Commented the dumps of the logs to file at this point - may need to tackle it later.
   - in case subject cause problem displaying the chase page -- 
     Currently the agents should edit the case subject
+
+
+
+
+
 
 DEPENDANCY:
 
@@ -81,3 +90,25 @@ DB issues working on SQLite3:
  Fix: use
       python manage.py syncdb --all
 
+==================================
+**    Notes on the GSPREAD module usage    **
+==================================
+The 1st sheet of the document should be the schedule
+The "datarange" should contain the day and month of the first day noted in the schedule
+The 2nd sheet of the document should be capture of the colors into values
+  that is done with a custom script function:
+      function TransferBGColor(targetRange) {
+        var ss = SpreadsheetApp.getActiveSpreadsheet();
+        var sheet = ss.getSheets()[0];
+        //Logger.log("range:" + targetRange);
+        var range = sheet.getRange(targetRange);
+        var bgColors = range.getBackgrounds();
+        
+        //var result = ss.getSheets()[1];
+        //var targets = result.getRange("B5:C6");
+        //targets.setValues(bgColors);
+        return bgColors;
+      }
+
+The usage of the script is just in the top-left cell:
+    =TransferBGColor("A1:AC119")

@@ -1,7 +1,6 @@
 from django.db import models
 import django.utils.timezone as timezone
 
-
 SFDC_ACCOUNTS = (('WLK', 'Wightlink'), ('RSL', 'Reflective Solutions'),)
 WLK_SYSTEM = (
     ('BBS', 'Blackberry Server'),
@@ -47,9 +46,13 @@ class Agent(models.Model):
 
 class Shift(models.Model):
     agent = models.ForeignKey(Agent)
-    date = models.DateTimeField()
+    date = models.DateTimeField(unique=True)
     color = models.CharField(max_length=7, choices=AGENT_COLORS, default='#ff0000')
     tipe = models.CharField(max_length=7, choices=(('Morning', 'Morning'), ('Middle', 'Middle'), ('Late', 'Late')), default='Morning')
+    # TODO: add type "overtime" and "return" ; to allow for few hrs, add shiftlenth
+
+    # class Meta:
+    #     unique_together = (("date", "tipe"),)
 
     def __str__(self):
         return self.date.strftime("%d/%m/%y %H:%M") + ':' + self.tipe
@@ -64,10 +67,11 @@ class Case(models.Model):
     description = models.TextField() #problem
 
     sfdc = models.CharField(max_length=3, choices=SFDC_ACCOUNTS, default='WLK')
-    # we want system to be dependant on SFDC, but that UI task, not DB => in DB we push a mix
+    # we want system to be dependant on SFDC, but the place for such dependancy is in the UI task,
+    ## not DB => in DB we push a mix
     #### !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! ####
     #### The proper approach might be to have separate clases for the different SFDC accounts
-    ######### I will try it with a mix, and plan to refactor that later...
+    ######### I will try it with a mix, and plan to refactor them later...
     # system = models.CharField(max_length=3, choices=ALL_SYSTEMS, default='WLK') #system
     system = models.CharField(max_length=64) #system
     status = models.CharField(max_length=6, choices=STATUSES, default='Open') #status
@@ -148,6 +152,10 @@ class Comment(models.Model):
 class Resource(models.Model):
     name = models.CharField(max_length=30)
     last_sync = models.DateTimeField() # last full sync
+    # module = models.CharField(max_length=30)
+    # class_name = models.CharField(max_length=30)
+    # actions = forms.ChoiceField(choices=tuple( (z,z) for z in ['Update', 'View', 'Reload'] ))
+
     # last_sync_fields = ? DictField
     #   I need event log, to store info on what update was pushed when, and how up-to-date is every subset of the DB
     #   or I can add "creation timestamp" for each record

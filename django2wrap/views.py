@@ -7,10 +7,9 @@ from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
-import django2wrap.shifts as shifts
-# import django2wrap.calls# as phonecalls
-from django2wrap.calls import PhoneCalls # as phonecalls
 
+from django2wrap.calls import PhoneCalls # as phonecalls
+from django2wrap.shifts import ScheduleShifts 
 
 def homepage(request):
     return HttpResponse('<html><body>Welcome<br><br><a href="/chase/">Chaser</a><br><a href="https://78.142.1.136/mwiki/">Wiki</a><br><a href="/escalation/">Escalation Form</a><br><a href="/license/">License Form</a></body></html>')
@@ -109,14 +108,19 @@ def listen(request, agent = 'Boris', file_name = '+000000_2012.06.15.Fri.17.40.3
     return response
 
 def sync(request):
-    actions = ['Update', 'View', 'Reload'] #make this Meta -- passing to form and to coresponding method getattr(foo, 'bar')()
     # update - pull specific subset of a resourse, add the new ones, and update old records in db
     #   update would need more form fields (agent, time period[hour,day,week, month], )
     # view   - show records from db - may use same subset fields as in "update"
     # reload - empty db, pull all records from resourse, and save them to db
     # load   - (basic) pull all records from resourse
     # wipe   - (basic) empty db
-    # save   - (basic) save the data to db
+    # save   - (basic) save the data to db, overwrite existing records
+    # sync   - (basic) save the data to db, skip existing records
+
+    # until I can pass via south the model changes for "Resource", I should use a dict:
+    actions = ['Update', 'View', 'Reload'] #make this Meta -- passing to form and to coresponding method getattr(foo, 'bar')()
+
+    actuator_classes = {'calls': PhoneCalls, 'shifts': ScheduleShifts }
 
     if request.method == 'POST':
         form = SyncDetailsForm(request.POST)
@@ -125,51 +129,11 @@ def sync(request):
             if clean_data['agent'] == 'None':
                 clean_data['agent'] = None
             if clean_data['from_date']:
+                # clear the time -- just for the time being
                 clean_data['from_date'] = datetime(*tuple( getattr(clean_data['from_date'], z) for z in ['year', 'month', 'day'] ))
-            sys = clean_data['system']
-            action = request.POST['action']
-            # print('sys', sys)
-            if sys == 'shifts':
-                sched = shifts.Shifts()
-                if action == 'Reload':
-                    sched.wipe_db()
-                    sched.download_data(**settings.GLOGIN)
-                    sched.save_db_data()
-                    results = sched.data
-                elif action == 'Update':
-                    pass
-                elif action == 'View':
-                    results = [ z.items() for z in Shift.objects.all() ]
-                    results.insert(0, ['Name', 'date time', 'Type',]) # 'Color Code',])
-                # elif action == 'Wipe':
-                #     sched.wipe_db()
-                else:
-                    errors = ['no such action']
-            elif sys == 'calls':
-                listing = PhoneCalls()
-                print('clean_data', clean_data)
-                if action == 'Reload':
-                    results = listing.reload()
-                elif action == 'Update':
-                    results = listing.update(clean_data['agent'], clean_data['from_date'])
-                elif action == 'View':
-                    results = listing.view(clean_data['agent'], clean_data['from_date'])
-                    
-                # elif action == 'Wipe':
-                #     listing.wipe_db()
-                else:
-                    errors = ['no such action']
-            else:
-                errors = ['no such system']
-            
+            action = request.POST['action'] #form can render select box, and I'm going for a several submit buttons
+            actuator = actuator_classes[clean_data['system']]()
+            results = getattr(actuator, action.lower())(clean_data['agent'], clean_data['from_date'])
     else:
         form = SyncDetailsForm()
     return render(request, 'sync.html', locals())
-
-    # resources = Resource.objects.all()
-    # agents = Agent.objects.all()
-    # # resources = ['Shift', 'Call']
-    # if request.method == 'POST':
-    #     # form = ()
-    #     # cd = form.cleaned_data
-    # return render(request, 'sync.html', locals())            

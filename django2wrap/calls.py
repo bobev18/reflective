@@ -51,7 +51,7 @@ class PhoneCalls:
             raise MyError('No folders matching agent names in ' + settings.MP3_STORAGE)
         if target_agent_name:
             if target_agent_name in available_data_agents:
-                self.data = self.sync_agent(target_agent_name, target_time)
+                self.data = self.load_agent(target_agent_name, target_time)
             else:
                 raise MyError('No folder matching the agent name "' + target_agent_name + '" in ' + settings.MP3_STORAGE)
         else:
@@ -60,7 +60,6 @@ class PhoneCalls:
 
     def load_agent(self, agent_folder, target_time):
         result_box = []
-        print('target time', target_time)
         for filename in os.listdir(os.path.join(settings.MP3_STORAGE, agent_folder)):
             if filename.endswith('.mp3'):
                 file_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(settings.MP3_STORAGE, agent_folder, filename)))
@@ -102,8 +101,8 @@ class PhoneCalls:
         return result
 
     def _match_shift(self, timestamp, agent_by_foldername):
-        match_day = Shift.objects.filter(date__range=(datetime(timestamp.year, timestamp.month, timestamp.day,tzinfo = timezone.get_default_timezone()),
-                                        datetime(timestamp.year, timestamp.month, timestamp.day, 23, 59, 59,tzinfo = timezone.get_default_timezone())))
+        match_day = Shift.objects.filter(date__range=(datetime(timestamp.year, timestamp.month, timestamp.day, tzinfo = timezone.get_default_timezone()),
+                                        datetime(timestamp.year, timestamp.month, timestamp.day, 23, 59, 59, tzinfo = timezone.get_default_timezone())))
         shifts = match_day.filter(agent__name=agent_by_foldername)
         return shifts, match_day
 
@@ -151,7 +150,7 @@ class PhoneCalls:
         # use Call.wipe_table() instead of Call.objects.all().delete()
         # this is needed to overcome bug: https://code.djangoproject.com/ticket/16426
     
-    def reload(self):
+    def reload(self, *dump):
         self.wipe()
         self.load()
         self.save()
@@ -175,12 +174,13 @@ class PhoneCalls:
             else:
                 agent_name = 'n/a'
 
+            call_time = timezone.make_aware(call.date, timezone.get_default_timezone())
             play_button = '<a href="/listen/' + str(call.id) + '/" target="_blank">&#9658;</a>'
-            return [play_button, agent_name, call.date.strftime("%d/%m/%y %H:%M"), call.case, 'contact', call.filename,] #self.shift.date]
+            return [play_button, agent_name, call_time.strftime("%d/%m/%y %H:%M"), call.case, 'contact', call.filename,] #self.shift.date]
 
         find = Call.objects.all()
         if target_agent_name:
-            find = find.filter(agent = target_agent_name)
+            find = find.filter(agent__name = target_agent_name)
         if target_time:
             find = find.filter(date__gt = target_time)
 
