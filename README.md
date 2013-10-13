@@ -26,6 +26,10 @@ For more info, check the Django documentation at: https://docs.djangoproject.com
 python manage.py schemamigration django2wrap --auto
 python manage.py migrate django2wrap
 
+to be able to access virtualenvwrapper:
+  source ~/.bash_profile
+  workon dj4
+(http://virtualenvwrapper.readthedocs.org/en/latest/command_ref.html)
 
 ==================================
 **    Notes on the CHASE app    **

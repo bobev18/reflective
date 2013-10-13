@@ -126,19 +126,110 @@ class ScheduleShifts:
         return self.data
 
     def view(sefl,  target_agent_name = None, target_time = None):
-        print('input', target_agent_name, target_time)
-        def itemize(shift):
-            shift_start_time = timezone.make_aware(shift.date, timezone.get_default_timezone())
-            return [shift.agent.name, shift_start_time.strftime("%d/%m/%y %H:%M"), shift.tipe,] # shift.color]
+        # print('input', target_agent_name, target_time)
+        tz = timezone.get_current_timezone()
+        def strdate(shift):
+            return timezone.make_naive(shift.date, tz).strftime("%y/%m/%d")
+            # return {'date': timezone.make_naive(shift.date, tz).strftime("%d/%m/%y"), 'data': (shift.agent.name[:2], shift.tipe, shift.color)}
 
-        find = Shift.objects.all()
+        find = Shift.objects.order_by('date')
         if target_agent_name:
             find = find.filter(agent__name = target_agent_name)
         if target_time:
             find = find.filter(date__gt = target_time)
 
+        first_find_date = find[0].date.date() # should be the smallest because of the order
+        shiftz = {'Morning': 0, 'Middle': 1, 'Late' : 2}
+        dates = {}
+        for shift in find:
+            if shift.date.date() in dates.keys():
+                dates[shift.date.date()][shiftz[shift.tipe]] = (shift.agent.name[:2], shift.color)
+            else:
+                dates[shift.date.date()] = {shiftz[shift.tipe]: (shift.agent.name[:2], shift.color)}
+
+        for back_index in range(7):
+            # print('starter_date', starter_date, starter_date.weekday())
+            if min(dates.keys()).weekday() != 0: 
+                dates[min(dates.keys()) + timedelta(days=-1)] = {0: ('', '#999999')}
+                # print('added', min(dates.keys()), dates[min(dates.keys())])
+            else:
+                break
+        results = []
+        big_line = sorted(dates.keys())
+        for section_index in range(0,len(big_line),28):
+            # adding row for the entire section
+            row_mo = []
+            row_d = []
+            row_s = [[], [], []]
+            row_morning = []
+            row_mid = []
+            row_late = []
+
+            # if day of section_index + 0 != Monday: #0 being the day index
+            #     insert _fake_day_ to rows1..4 at position 0
+            # for back_index in range(7):
+            #     if (first_find_date + timedelta(days=-back_index)).day_of_week() != 0: 
+            #         row.insert(0,('','#999999'))
+            #         row_morning.insert(0,('','#999999'))
+            #         row_mid.insert(0,('','#999999'))
+            #         row_late.insert(0,('','#999999'))
+            #     else:
+            #         break
+                
+            for day_index in range(28):
+                try:
+                    # print(section_index,day_index,section_index+day_index)
+                    # print(big_line[section_index+day_index],dates[big_line[section_index+day_index]],dates[big_line[section_index+day_index]].keys())
+                    row_mo.append(big_line[section_index+day_index].strftime('%b'))
+                    row_d.append(big_line[section_index+day_index].strftime('%d%a')[:3])
+                    for shi in range(len(row_s)):
+                        if shi in dates[big_line[section_index+day_index]].keys():
+                            content = dates[big_line[section_index+day_index]][shi]
+                            row_s[shi].append(content[0]+content[1])
+                        else:
+                            row_s[shi].append('')
+
+                        
+                    # row_morning.append(dates[big_line[section_index+day_index]][0][0])
+                    # if 1 in dates[big_line[section_index+day_index]].keys():
+                    #     row_mid.append(dates[big_line[section_index+day_index]][1][0])
+                    # else:
+                    #     # row_mid.append(('','#ffffff'))
+                    #     row_mid.append('')
+                    # if 2 in dates[big_line[section_index+day_index]].keys():
+                    #     row_late.append(dates[big_line[section_index+day_index]][2][0])
+                    # else:
+                    #     # row_late.append(('','#ffffff'))
+                    #     row_late.append('')
+                except:
+                    pass
+            results.append([big_line[section_index].year])
+            results.append(row_mo)
+            results.append(row_d)
+            for shi in range(len(row_s)):
+                results.append(row_s[shi])
+                
+            # results.append(row_morning)
+            # results.append(row_mid)
+            # results.append(row_late)
+
+        return results
+
+    def simple_view(sefl,  target_agent_name = None, target_time = None):
+        # print('input', target_agent_name, target_time)
+        tz = timezone.get_current_timezone()
+        def itemize(shift):
+            return [shift.agent.name, timezone.make_naive(shift.date, tz).strftime("%d/%m/%y %H:%M"), shift.tipe,] # shift.color]
+
+        find = Shift.objects.order_by('date')
+        if target_agent_name:
+            find = find.filter(agent__name = target_agent_name)
+        if target_time:
+            find = find.filter(date__gt = target_time)
+
+
         results = [ itemize(z) for z in find ]
-        results.insert(0, ['Name', 'date time', 'Type',]) # 'Color Code'])
+        results.insert(0, ['Agent Name', 'Shift Start Time', 'Shift Type',]) # 'Color Code'])
         return results
 
     def _get_init_date(self, conn_obj, key, init_year = '12'):

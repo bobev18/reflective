@@ -1,4 +1,5 @@
 from django import template
+import re
 
 register = template.Library()
 
@@ -94,8 +95,8 @@ class UpperNode(template.Node):
         output = self.nodelist.render(context)
         return output.upper()
 
-@register.simple_tag
-def simple_table(table):
+def listify(table):
+    header = None
     if isinstance(table, list):
         header = table[0]
         if isinstance(header, list):
@@ -120,15 +121,52 @@ def simple_table(table):
     else:
         raise TypeError(table)
 
+    return header, body
+
+@register.simple_tag
+def simple_table(table):
+    try:
+        header, body = listify(table)
+    except TypeError:
+        return ''
     try:
         html = '<table id="simpletable"><tr>'
-        for name in header:
-            html += '<th>' + str(name) + '</th>'
-        html += '</tr>'
+        if header:
+            for name in header:
+                html += '<th>' + str(name) + '</th>'
+            html += '</tr>'
         for row in body:
             html += '<tr>'
             for val in row:
                 html += '<td>' + str(val) + '</td>'
+            html += '</tr>'
+        html += '</table>'
+        return html
+    except template.VariableDoesNotExist:
+        return ''
+    except TypeError:
+        return ''
+
+@register.simple_tag
+def schedule_table(table):
+    try:
+        header, body = listify(table)
+    except TypeError:
+        return ''
+    try:
+        html = '<table id="simpletable"><tr>'
+        if header:
+            for name in header:
+                html += '<th>' + str(name) + '</th>'
+            html += '</tr>'
+        for row in body:
+            html += '<tr>'
+            for val in row:
+                bgcolor = re.search('#[0-9a-f]{6}',str(val))
+                if bgcolor:
+                    html += '<td style="background-color:' + bgcolor.group(0)+';">' + str(val).replace(bgcolor.group(0),'') + '</td>'
+                else:
+                    html += '<td>' + str(val) + '</td>'
             html += '</tr>'
         html += '</table>'
         return html
