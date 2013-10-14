@@ -19,7 +19,7 @@ class CommentAdmin(admin.ModelAdmin):
    list_display = ('agent', 'shift', 'case', 'call', 'added', 'message', 'postpone', 'postponedate', 'byclient', 'raw')
 
 class ResourceAdmin(admin.ModelAdmin):
-   list_display = ('name', 'last_sync')
+   list_display = ('name', 'last_sync', 'module', 'class_name')
 
 admin.site.register(Agent, AgentAdmin)
 admin.site.register(Shift, ShiftAdmin)

@@ -8,13 +8,15 @@ from django.db import models
 class Migration(SchemaMigration):
 
     def forwards(self, orm):
-        # Adding unique constraint on 'Shift', fields ['date']
-        db.create_unique('django2wrap_shift', ['date'])
+        # Deleting field 'Resource.actions'
+        db.delete_column('django2wrap_resource', 'actions')
 
 
     def backwards(self, orm):
-        # Removing unique constraint on 'Shift', fields ['date']
-        db.delete_unique('django2wrap_shift', ['date'])
+        # Adding field 'Resource.actions'
+        db.add_column('django2wrap_resource', 'actions',
+                      self.gf('django.db.models.fields.CharField')(default=None, max_length=32),
+                      keep_default=False)
 
 
     models = {
@@ -46,6 +48,7 @@ class Migration(SchemaMigration):
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'in_resolution_sla': ('django.db.models.fields.BooleanField', [], {'default': 'True'}),
             'in_response_sla': ('django.db.models.fields.BooleanField', [], {'default': 'True'}),
+            'last_sync': ('django.db.models.fields.DateTimeField', [], {'auto_now_add': 'True', 'blank': 'True'}),
             'link': ('django.db.models.fields.URLField', [], {'unique': 'True', 'max_length': '200'}),
             'number': ('django.db.models.fields.CharField', [], {'unique': 'True', 'max_length': '4'}),
             'postpone': ('django.db.models.fields.BooleanField', [], {'default': 'False'}),
@@ -80,12 +83,14 @@ class Migration(SchemaMigration):
         },
         'django2wrap.resource': {
             'Meta': {'object_name': 'Resource'},
+            'class_name': ('django.db.models.fields.CharField', [], {'max_length': '30'}),
             'id': ('django.db.models.fields.AutoField', [], {'primary_key': 'True'}),
             'last_sync': ('django.db.models.fields.DateTimeField', [], {}),
-            'name': ('django.db.models.fields.CharField', [], {'max_length': '30'})
+            'module': ('django.db.models.fields.CharField', [], {'max_length': '125'}),
+            'name': ('django.db.models.fields.CharField', [], {'max_length': '32'})
         },
         'django2wrap.shift': {
-            'Meta': {'object_name': 'Shift'},
+            'Meta': {'unique_together': "(('date', 'tipe'),)", 'object_name': 'Shift'},
             'agent': ('django.db.models.fields.related.ForeignKey', [], {'to': "orm['django2wrap.Agent']"}),
             'color': ('django.db.models.fields.CharField', [], {'default': "'#ff0000'", 'max_length': '7'}),
             'date': ('django.db.models.fields.DateTimeField', [], {'unique': 'True'}),

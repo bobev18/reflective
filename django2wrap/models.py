@@ -51,8 +51,8 @@ class Shift(models.Model):
     tipe = models.CharField(max_length=7, choices=(('Morning', 'Morning'), ('Middle', 'Middle'), ('Late', 'Late')), default='Morning')
     # TODO: add type "overtime" and "return" ; to allow for few hrs, add shiftlenth
 
-    # class Meta:
-    #     unique_together = (("date", "tipe"),)
+    class Meta:
+        unique_together = (("date", "tipe"),)
 
     def __str__(self):
         return self.date.strftime("%d/%m/%y %H:%M") + ':' + self.tipe
@@ -98,6 +98,7 @@ class Case(models.Model):
 
     creator = models.ForeignKey(Agent)
     shift = models.ForeignKey(Shift) # the shift during which the case was created
+    last_sync = models.DateTimeField(auto_now_add=True)
     ###
     ### list of comments of a case would be the reversed call on the Comment>>>Case via foreign key
     ### 
@@ -150,12 +151,10 @@ class Comment(models.Model):
         return self.case + ': ' + str(self.added)
 
 class Resource(models.Model):
-    name = models.CharField(max_length=30)
-    last_sync = models.DateTimeField() # last full sync
-    # module = models.CharField(max_length=30)
-    # class_name = models.CharField(max_length=30)
-    # actions = forms.ChoiceField(choices=tuple( (z,z) for z in ['Update', 'View', 'Reload'] ))
-
+    name = models.CharField(max_length=32)
+    last_sync = models.DateTimeField()
+    module = models.CharField(max_length=125) # may use use it as name of path-name
+    class_name = models.CharField(max_length=30) # the class name may be different from the module name
     # last_sync_fields = ? DictField
     #   I need event log, to store info on what update was pushed when, and how up-to-date is every subset of the DB
     #   or I can add "creation timestamp" for each record

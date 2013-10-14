@@ -33,10 +33,17 @@ class ScheduleShifts:
                     new_data = self.download(**settings.SCHEDULE_KEYS[year])
                     print('NEW data size', len(new_data))
                     if len(new_data) != 0:
+                        # find overlapping shifts
                         new_data_datetimes = [ x['date'] for x in new_data ]
+                        shifts2remove = [] # cant delete items from list that's being cycled
                         for shift in self.data:
                             if shift['date'] in new_data_datetimes:
-                                self.data.remove(shift)
+                                shifts2remove.append(shift)
+                        # do the deletions of overlapping
+                        for shift in shifts2remove:
+                            self.data.remove(shift)
+                            print('removed duplicate shift:', shift)
+                        # the overlap dates are removed from the _old_ list and will be added anew with the new_data
                         self.data += new_data
                         print('data size', len(self.data))
                     else:
@@ -76,6 +83,24 @@ class ScheduleShifts:
         results = self._parse_shifts(init_date, sheet_data, *datasize(datarange), map_meaningful=map_meaningful)
 
         return results
+
+    def view_odities(self, data=None):
+        if not data:
+            data = self.data
+        
+        group_by_date = {}
+        for shift in self.data:
+            if shift['date'].date() in group_by_date.keys():
+                group_by_date[shift['date'].date()].append(shift)
+            else:
+                group_by_date[shift['date'].date()] = [shift]
+
+        # detect odities
+        for date in group_by_date.keys():
+            if len(group_by_date[date]) < 2 or len(group_by_date[date]) > 3:
+                print(date, group_by_date[date])
+
+        return group_by_date
 
     def save(self):
         if self.data:
@@ -125,7 +150,8 @@ class ScheduleShifts:
         self.sync()
         return self.data
 
-    def view(sefl,  target_agent_name = None, target_time = None):
+    def view(self, target_agent_name = None, target_time = None):
+        # self.view_odities()
         # print('input', target_agent_name, target_time)
         tz = timezone.get_current_timezone()
         def strdate(shift):

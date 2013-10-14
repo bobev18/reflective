@@ -7,9 +7,21 @@ from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
+import imp
 
-from django2wrap.calls import PhoneCalls # as phonecalls
-from django2wrap.shifts import ScheduleShifts 
+#load resources
+resources = Resource.objects.all()
+actuator_classes = {}
+for res in resources:
+    actuator_classes[res.name] = getattr(imp.load_source(res.class_name, res.module), res.class_name)
+
+# PhoneCalls = getattr(imp.load_source('PhoneCalls', 'django2wrap/calls.py'), 'PhoneCalls')
+
+# PhoneCalls = imp.load_source('PhoneCalls', 'django2wrap/calls.py').getattr(actuator, action.lower())(clean_data['agent'], clean_data['from_date'])
+# ScheduleShifts = imp.load_source('ScheduleShifts', 'django2wrap/shifts.py')
+# from django2wrap.calls import PhoneCalls # as phonecalls
+# from django2wrap.shifts import ScheduleShifts 
+# actuator_classes = {'calls': PhoneCalls, 'shifts': ScheduleShifts }
 
 def homepage(request):
     return HttpResponse('<html><body>Welcome<br><br><a href="/chase/">Chaser</a><br><a href="https://78.142.1.136/mwiki/">Wiki</a><br><a href="/escalation/">Escalation Form</a><br><a href="/license/">License Form</a></body></html>')
@@ -120,7 +132,6 @@ def sync(request):
     # until I can pass via south the model changes for "Resource", I should use a dict:
     actions = ['Update', 'View', 'Reload'] #make this Meta -- passing to form and to coresponding method getattr(foo, 'bar')()
 
-    actuator_classes = {'calls': PhoneCalls, 'shifts': ScheduleShifts }
 
     if request.method == 'POST':
         form = SyncDetailsForm(request.POST)
