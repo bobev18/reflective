@@ -75,7 +75,7 @@ class PhoneCalls:
             time_of_call = file_time
 
         shifts, day_matches = self._match_shift(time_of_call, agent_folder)
-        if len(shifts) == 0 and time_of_call < datetime(2012, 11, 26, tzinfo = timezone.get_default_timezone()):
+        if len(shifts) == 0: # and time_of_call < datetime(2012, 11, 26, tzinfo = timezone.get_default_timezone()):
             # print('shift not synced', filename)
             possible_agents = Agent.objects.filter(name=agent_folder).filter(start__lt=time_of_call.date()).filter(end__gt=time_of_call.date())
             if len(possible_agents) == 1:
@@ -101,8 +101,10 @@ class PhoneCalls:
         return result
 
     def _match_shift(self, timestamp, agent_by_foldername):
-        match_day = Shift.objects.filter(date__range=(datetime(timestamp.year, timestamp.month, timestamp.day, tzinfo = timezone.get_default_timezone()),
-                                        datetime(timestamp.year, timestamp.month, timestamp.day, 23, 59, 59, tzinfo = timezone.get_default_timezone())))
+        # match_day = Shift.objects.filter(date__range=(datetime(timestamp.year, timestamp.month, timestamp.day, tzinfo = timezone.get_default_timezone()),
+        #                                 datetime(timestamp.year, timestamp.month, timestamp.day, 23, 59, 59, tzinfo = timezone.get_default_timezone())))
+        match_day = Shift.objects.filter(date__range=(timestamp.replace(hour=0, minute=0, tzinfo=timezone.get_default_timezone()),
+                                        timestamp.replace(hour=23, minute=59, tzinfo=timezone.get_default_timezone())))
         shifts = match_day.filter(agent__name=agent_by_foldername)
         return shifts, match_day
 

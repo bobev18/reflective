@@ -62,10 +62,9 @@ class Shift(models.Model):
 
 class Case(models.Model):
     #'status', 'actual', 'name', 'created', 'udata', 'system', 'sla', 'reason', 'link', 'result', 'closed', 'casetimes', 'closedate', 'problem', 'subject', 'id', 'severity'
-    number = models.CharField(max_length=4, unique=True) #id
+    number = models.CharField(max_length=4) #id
     subject = models.CharField(max_length=1024) #subject
     description = models.TextField() #problem
-
     sfdc = models.CharField(max_length=3, choices=SFDC_ACCOUNTS, default='WLK')
     # we want system to be dependant on SFDC, but the place for such dependancy is in the UI task,
     ## not DB => in DB we push a mix
@@ -76,21 +75,20 @@ class Case(models.Model):
     system = models.CharField(max_length=64) #system
     status = models.CharField(max_length=6, choices=STATUSES, default='Open') #status
     priority = models.CharField(max_length=1, choices=PRIORITIES, default='3') #severity
-    reason = models.CharField(max_length=64, choices=REASONS, default='Problem') #reason
-
-    in_response_sla = models.BooleanField(default=True) # actual
-    in_resolution_sla = models.BooleanField(default=True) # actual
-
+    reason = models.CharField(max_length=64, choices=REASONS, default='Problem', blank=True, null=True) #reason
+    # problem = models.CharField(max_length=64, choices=, default='', blank=True, null=True) #problem
     contact =  models.CharField(max_length=64) #===name #only the name for now...
     created = models.DateTimeField() #created
     closed = models.DateTimeField(null=True) #closedate
-
-    target_resolution_sla = models.PositiveIntegerField() # sla # in hrs
-    target_response_sla = models.PositiveIntegerField() # sla # in hrs
-    resolution_time = models.FloatField(null=True) # casetimes ## resolution time in hrs
-    response_time = models.FloatField(null=True) # casetimes ## response time in hrs
     link = models.URLField(unique=True) # link
-    raw = models.TextField() # udata
+
+    in_support_sla = models.BooleanField(default=True) # actual
+    in_response_sla = models.BooleanField(default=True) # actual
+    support_sla = models.PositiveIntegerField() # sla # in hrs
+    response_sla = models.PositiveIntegerField() # sla # in hrs
+    support_time = models.FloatField(null=True) # casetimes ## resolution time in hrs
+    response_time = models.FloatField(null=True) # casetimes ## response time in hrs
+    # raw = models.TextField() # this should be added once on stable DB
     
     postpone = models.BooleanField(default=False)
     postponedate = models.DateTimeField(blank=True, null=True)
@@ -102,6 +100,8 @@ class Case(models.Model):
     ###
     ### list of comments of a case would be the reversed call on the Comment>>>Case via foreign key
     ### 
+    class Meta:
+        unique_together = (("number", "sfdc"),)
 
     def __str__(self):
         return self.number

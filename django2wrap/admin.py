@@ -9,8 +9,8 @@ class ShiftAdmin(admin.ModelAdmin):
    list_display = ('agent', 'date', 'color', 'tipe')
 
 class CaseAdmin(admin.ModelAdmin):
-   list_display = ('number', 'subject', 'description', 'sfdc', 'system', 'status', 'priority', 'reason', 'in_response_sla', 'in_resolution_sla', 'contact', 'created', 'closed', 'target_resolution_sla',
-    'target_response_sla', 'resolution_time', 'response_time', 'link', 'raw', 'postpone', 'postponedate', 'target_chase', 'creator', 'shift')
+   list_display = ('number', 'subject', 'description', 'sfdc', 'system', 'status', 'priority', 'reason', 'in_response_sla', 'in_support_sla', 'contact', 'created', 'closed', 'support_sla',
+    'response_sla', 'support_time', 'response_time', 'link', 'postpone', 'postponedate', 'target_chase', 'creator', 'shift') # , 'raw')
 
 class CallAdmin(admin.ModelAdmin):
    list_display = ('agent', 'shift', 'case', 'filename', 'date', 'case')

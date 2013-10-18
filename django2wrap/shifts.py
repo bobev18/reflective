@@ -1,7 +1,7 @@
 import gspread
 from datetime import date, datetime, timedelta
 import django.utils.timezone as timezone
-import pickle, itertools, time
+import itertools, time
 from django2wrap.models import Agent, Shift, Resource
 from django.db import connection
 from django.conf import settings

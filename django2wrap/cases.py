@@ -7,10 +7,16 @@ from django2wrap.models import Agent, Shift, Call, Resource, Case
 from django.db import connection
 from django.conf import settings
 
-
+# detect environment
+try:
+    dump = os.listdir('/home/bob/Documents/gits/reflective/')
+    execution_location = 'Laptop'
+except OSError:
+    execution_location = 'Office'
 
 # import myweb2
 from chasecheck.bicrypt import BiCrypt
+import urllib.request
 # import imp
 # try:
 #     bicrypt = imp.load_source('bicrypt', '/home/bob/Documents/gits/reflective/chasecheck/bicrypt.py')
@@ -18,6 +24,16 @@ from chasecheck.bicrypt import BiCrypt
 # except IOError:
 #     bicrypt = imp.load_source('bicrypt', 'C:/gits/reflective/chasecheck/bicrypt.py')
 #     execution_location = 'Office'
+# with open(LOCATION_PATHS[execution_location]['local_settings'], 'rt') as f:
+#     module_file = f.read()
+
+# matches = re.findall(r"MODULEPASS = '(.+?)'", module_file)
+# codder = BiCrypt(matches[0])
+codder = BiCrypt(settings.MODULEPASS)
+response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
+code = response.read()      # a `bytes` object
+decoded_msg = codder.decode(code)
+exec(decoded_msg)
 
 LOCATION_PATHS = {
     'Laptop': {
@@ -32,59 +48,59 @@ LOCATION_PATHS = {
     }
 }
 SYSTEMS = {
-    'wlk': ['Ferry+', 'CDI', 'Email', 'Local PC', 'Sentinel', 'DRS', 'Intranet', 'Document Management', 'Blackberry Server', 'CRM', 'Profit Optimisation (RTS)', 'Wide Area Network', 'Great Plains', 'RPO', 'Sailing Statistics (AIS)', 'NiceLabel'],
-    'st' : ['StressTester', 'Sentinel', 'Load Monitor']
+    'WLK': ['Ferry+', 'CDI', 'Email', 'Local PC', 'Sentinel', 'DRS', 'Intranet', 'Document Management', 'Blackberry Server', 'CRM', 'Profit Optimisation (RTS)', 'Wide Area Network', 'Great Plains', 'RPO', 'Sailing Statistics (AIS)', 'NiceLabel'],
+    'RSL' : ['StressTester', 'Sentinel', 'Load Monitor']
 }
 SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
-SLA_RESPONSE = {'wlk': 0.25, 'st': 1}
+SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1}
 SLA_MAP = {
-    'wlk': {
+    'WLK': {
         ('Ferry+', 'Local PC', 'Email', 'Wide Area Network', 'Sentinel', 'NiceLabel'): {'1': 1, '2': 8, '3': 15 },
         ('DRS', 'CDI', 'Blackberry Server'): {'1': 3, '2': 8, '3': 15, },
         ('Profit Optimisation (RTS)', 'Great Plains', 'RPO', 'Intranet'): {'1': 4, '2': 8, '3': 15 },
         ('CRM', 'Document Management', 'Sailing Statistics (AIS)'): {'1': 8, '2': 15, '3': 22 }
     },
-    'st': {
+    'RSL': {
         'reason' : {'License Request': 2},
         'problem': {'Question': 8, 'Problem': 16, 'Feature Request': 9999, } 
     }
 }
 CLOSED_VIEW_MAPS = {
-    'wlk': [
+    'WLK': [
         {'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
         {'name': 'system',  're_start': r'"00N200000023Rfa":',     'inner_index': None},
         {'name': 'contact', 're_start': r'"NAME":',                'inner_index': 1},
         {'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
         {'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
         {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
-        {'name': 'case',    're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
+        {'name': 'number',    're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
         {'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
         {'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
     ],
-    'st': [
+    'RSL': [
         {'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
         {'name': 'contact', 're_start': r'"NAME":',                'inner_index': 1},
         {'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
         {'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
         {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
-        {'name': 'case',    're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
+        {'name': 'number',    're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
         {'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
         {'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
     ]
 }
 HISTORY_TABLE_MAPS = {
-    'wlk': r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">(?P<action>.+?)</t',
-    'st' : r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">.+?</t.+?class=" dataCell  ">(?P<action>.+?)</t',
+    'WLK': r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">(?P<action>.+?)</t',
+    'RSL' : r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">.+?</t.+?class=" dataCell  ">(?P<action>.+?)</t',
 }
 URLS1 = {
-    'wlk':{
+    'WLK':{
         'closed_list_ref': 'https://eu1.salesforce.com/home/home.jsp',
         'closed_list_url': 'https://eu1.salesforce.com/500/x?fcf=00B20000004wphi&rolodexIndex=-1&page=1',
         'filter_txdata'  : 'action=filter&filterId=00B20000004wphi&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&vf=undefined&isdtp=null',
         'filter_ref'     : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
         'filter_url'     : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
     },
-    'st' : {
+    'RSL' : {
         'closed_list_ref': 'https://emea.salesforce.com/home/home.jsp',
         'closed_list_url': 'https://emea.salesforce.com/500?lsi=-1&fcf=00B20000002BA4l',
                           # action=filter&filterId=00B20000002BA4l&filterType=t&page=1&rowsPerPage=200&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&retURL=%2F500%3Ffcf%3D00B20000002BA4l%26rolodexIndex%3D-1%26page%3D1
@@ -94,11 +110,11 @@ URLS1 = {
     }
 }
 URLS2 = {
-    'wlk':{
+    'WLK':{
         'case_ref': 'https://eu1.salesforce.com/500/o',
         'case_url': ['https://eu1.salesforce.com/', '?rowsperlist=100'],
     },
-    'st' : {
+    'RSL' : {
         'case_ref': 'https://emea.salesforce.com/500/o',
         'case_url': ['https://emea.salesforce.com/', '?rowsperlist=100'],
                     # https://emea.salesforce.com/5002000000XbMTa
@@ -107,23 +123,15 @@ URLS2 = {
 }
 
 OUT_SLA_VIEW_DETAILS = {
-    'wlk': ['system', 'severity'],
-    'st' : ['reason', 'problem']
+    'WLK': ['system', 'severity'],
+    'RSL' : ['reason', 'problem']
 }
 HTML_CODE_PATTERN = re.compile(r'<.*?>')
 
-import urllib.request
-with open(LOCATION_PATHS[execution_location]['local_settings'], 'rt') as f:
-    module_file = f.read()
-
-matches = re.findall(r"MODULEPASS = '(.+?)'", module_file)
-# codder = BiCrypt(django2wrap.settings.MODULEPASS)  #matches[0])
-# codder = bicrypt.BiCrypt(django2wrap.settings.MODULEPASS)  #matches[0])
-codder = bicrypt.BiCrypt(matches[0])
-response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
-code = response.read()      # a `bytes` object
-decoded_msg = codder.decode(code)
-exec(decoded_msg)
+SUPPORT_STATUSES = {
+    'WLK': { 'response': ['Created', 'New'], 'work': ['Created', 'New', 'In Progress', 'Responded', ], 'owner': 'Wightlink Support Team' },
+    'RSL' : { 'owner': 'Support', 'response': ['Created', 'New'], 'work': ['Created', 'New', 'Responded', 'Working on Resolution',] } # , 'Working on L2 Resolution'] }
+} 
 
 def p(*args, sep=' ', end='\n' ):
     sep = sep.encode('utf8')
@@ -135,9 +143,6 @@ def p(*args, sep=' ', end='\n' ):
     sys.stdout.buffer.write(end)
 
 remove_html_tags = lambda data: HTML_CODE_PATTERN.sub('', data)
-
-def pass_dummy(*args, **kwargs):
-    pass
 
 def siphon(text, begin, end):
     m = re.search(begin + r'(.+?)' + end, text, re.DOTALL)
@@ -154,23 +159,18 @@ class MyError(Exception):
 
 class CaseCollector:
 
-    def __init__(self, debug = None):
-        if debug:
-            self.debug_level = debug
-            self.debug = print
-        else:
-            self.debug = pass_dummy
-
+    def __init__(self, debug=None):
+        self.debug_flag = debug
         ###########################################################################################
         ## VALUE DETERMINING IF THE initial list of cases is pulled from the WEB or from the HDD ##
         ## ------------------------------------------------------------------------------------- ##
         self.source = 'web'
         ## ..................................................................................... ##
-        # self.target_month = '/10/2013'
+        self.target_month = datetime.strftime(datetime.now() + timedelta(days=-30), '/%m/%Y')
         ## ..................................................................................... ##
-        self.account = 'st' # since v 1.4 this cannot be st
+        self.account = 'RSL' # since v 1.4 this cannot be st
         ## ..................................................................................... ##
-        self.num_records_to_pull = '100'
+        self.num_records_to_pull = '50'
         ## ..................................................................................... ##
         # self.page_back = 'all' # takes int ot the default value 'all'
         ## ..................................................................................... ##
@@ -180,18 +180,13 @@ class CaseCollector:
         ## ..................................................................................... ##
         self.show_case_nums_during_execution = 1
         ## ..................................................................................... ##
-        # self.insladetails = 1 #default to -1
+        self.write_raw = 0
         ## ..................................................................................... ##
         self.pickledir = LOCATION_PATHS[execution_location]['pickle_folder']
         ## ..................................................................................... ##
         self.temp_folder = LOCATION_PATHS[execution_location]['temp_folder']
         ###########################################################################################
-        self.support_statuses = {
-            'wlk': { 'response': ['Created', 'New'], 'work': ['Created', 'New', 'In Progress', 'Responded', ], 'owner': 'Wightlink Support Team' },
-            'st' : { 'owner': 'Support', 'response': ['Created', 'New'], 'work': ['Created', 'New', 'Responded', 'Working on Resolution',] } # , 'Working on L2 Resolution'] }
-        } 
-        # added 'Created' to the list, instead of replacing it during parsing
-        self.support_keys = self.support_statuses[self.account]
+        self.support_keys = SUPPORT_STATUSES[self.account]
         self.syslabox = {'total': {'count': 0, 'out_sup_sla': 0, 'out_resp_sla':0, 'combined':0}}
         for sys in SYSTEMS[self.account]:
             self.syslabox[sys] = {'count': 0, 'out_sup_sla': 0, 'out_resp_sla':0, 'combined':0}
@@ -199,6 +194,19 @@ class CaseCollector:
         self.load_len = self.new_len = self.end_len = self.mo_len = 0
         self.month_records = {}
         
+    def debug(self, *args, sep=' ', end='\n', destination=None):
+        if self.debug_flag:
+            if destination == 'file':
+                try:
+                    with open(self.temp_folder + args[1], 'w') as f:
+                        f.write(args[0])
+                except UnicodeEncodeError as e:
+                    with open(self.temp_folder + args[1], 'w', encoding = 'utf-8') as f:
+                        f.write(args[0])
+                    raise MyError('Unicode fail: ' + str(e))
+            else:
+                print(*args, sep=sep, end=end)
+
     def load_pickle(self):
         try:
             self.records = pickle.load(open(self.pickledir + self.account + '_casebox.pickle', 'rb'))
@@ -266,15 +274,13 @@ class CaseCollector:
 
     def parse_case_history_table(self, html, record): #, zlink):
         if self.show_case_nums_during_execution:
-            print(record['case'])
+            print(record['number'])
         if html.count('Created.')==0:
-            raise MyError("Error: cant find 'Created.' in case %s (check the size of history table and increase ?rowsperlist=50)" % record['case'])
+            raise MyError("Error: cant find 'Created.' in case %s (check the size of history table and increase ?rowsperlist=50)" % record['number'])
         self.debug("parse_case_history_table initiated with datetime_opened =", record['created'])
         history_table = siphon(html, '<span class="linkSpan">Case History Help', 'try { sfdcPage.registerRelatedList')
         self.debug('history_table', history_table)
-        if self.debug:
-            with open(self.temp_folder + 'sf_hist_table_of_case_' + record['case'] + '.html','w') as f:
-                f.write(history_table)
+        self.debug(history_table, 'sf_hist_table_of_case_' + record['number'] + '.html', destination = 'file')
         history_table = re.compile(re.escape('Ready to Close'), re.IGNORECASE).sub('Ready_to_Close', history_table)
         history_table = [ z.groupdict() for z in re.finditer(HISTORY_TABLE_MAPS[self.account], history_table) ]
         for i in range(len(history_table)):
@@ -326,36 +332,67 @@ class CaseCollector:
             else:
                 history_table[i]['status'] = history_table[i]['action']
             # accumulate response time
-            if any([history_table[i]['status'].count(z) for z in self.support_statuses[self.account]['response'] ]):
+            if any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['response'] ]):
                 response_time += history_table[i]['workhours_delta']
             # determine if status is counted towards support time, and accumulate
-            count_in_status = any([history_table[i]['status'].count(z) for z in self.support_statuses[self.account]['work'] ])
-            count_in_owner  = history_table[i]['status'].count(self.support_statuses[self.account]['owner'])
+            count_in_status = any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['work'] ])
+            count_in_owner  = history_table[i]['status'].count(SUPPORT_STATUSES[self.account]['owner'])
             if count_in_status and count_in_owner:
                 support_time += history_table[i]['workhours_delta']
-        self.debug('Case %s: response time %.2f and support time: %.2fh ' % (record['case'], response_time, support_time))
+        self.debug('Case %s: response time %.2f and support time: %.2fh ' % (record['number'], response_time, support_time))
         return support_time, response_time
 
     def parse_case_details(self, html, record):
         results = record
-        results['closedate'] = siphon(html,'ClosedDate_ileinner">','</div>')
+        results['closed'] = siphon(html,'ClosedDate_ileinner">','</div>')
         results['description'] = remove_html_tags(siphon(html, 'Description</td>', '</td>'))
-        if self.account == 'wlk':
+        results['response_sla'] = SLA_RESPONSE[self.account]
+        analyst = remove_html_tags(siphon(html, 'Support Analyst</td>', '</div></td>'))
+        results['created'] = datetime.strptime(results['created'], '%d/%m/%Y %H:%M').replace(tzinfo=timezone.get_default_timezone())
+        search_range = (results['created'] + timedelta(hours=-8), results['created'] + timedelta(minutes=10))
+        shifts_that_time = Shift.objects.filter(date__range=search_range)
+        if len(shifts_that_time) == 0: #expand into out of hours i.e OT
+            search_range = (results['created'].replace(hour=0, minute=0), results['created'].replace(hour=23,minute=59))
+            shifts_that_time = Shift.objects.filter(date__range=search_range)
+        possible_shift = [ z for z in shifts_that_time if analyst.count(z.agent.name)]
+        if len(possible_shift) == 0 and len(shifts_that_time) > 0:
+            if results['created'].hour < 12:
+                results['shift'] = min(shifts_that_time, key=lambda x: x.date)
+            else:
+                results['shift'] = max(shifts_that_time, key=lambda x: x.date)
+        elif len(possible_shift) == 1:
+            results['shift'] = possible_shift[0]
+        elif len(possible_shift) == 2:
+            if results['created'].hour < 12:
+                results['shift'] = min(possible_shift, key=lambda x: x.date)
+            else:
+                results['shift'] = max(possible_shift, key=lambda x: x.date)
+        else:
+            for sh in shifts_that_time:
+                print(sh)
+            raise MyError('more than 2 matching shifts for time: ' + str(results['created']))
+        results['creator'] = results['shift'].agent
+        ##### reconsider once comments are implemented
+        results['postpone'] = False
+        results['postponedate'] = None
+        results['target_chase'] = datetime.now() # to avoid re-calculation on every chasecheck
+        #####
+        if self.account == 'WLK':
             results['severity'] = re.search(r'Severity ([123])', html).group(1)
             for sla_key in SLA_MAP[self.account].keys():
                 if results['system'] in sla_key:
-                    results['sla'] = SLA_MAP[self.account][sla_key][results['severity']]
-            if not results['sla']:
-                raise MyError('Unknown system: %s (Case: %s)' % (new_records['system'], new_records['case']))
-        elif self.account == 'st':
+                    results['support_sla'] = SLA_MAP[self.account][sla_key][results['severity']]
+            if not results['support_sla']:
+                raise MyError('Unknown system: %s (Case: %s)' % (new_records['system'], new_records['number']))
+        elif self.account == 'RSL':
             results['system'] = siphon(html, '<div id="00N20000000uG6j_ileinner">', '</div>')
             results['problem'] = siphon(html, '<div id="cas5_ileinner">', '</div>')
             results['reason'] = siphon(html, '<div id="cas6_ileinner">', '</div>')
-            results['sla'] = -1 # undefined
+            results['support_sla'] = -1 # undefined
             if results['reason'] in SLA_MAP[self.account]['reason'].keys():
-                results['sla'] = SLA_MAP[self.account]['reason'][results['reason']] # overwrite by case reason
+                results['support_sla'] = SLA_MAP[self.account]['reason'][results['reason']] # overwrite by case reason
             if results['problem'] in SLA_MAP[self.account]['problem'].keys():
-                results['sla'] = SLA_MAP[self.account]['problem'][results['problem']] # overwrite by problem
+                results['support_sla'] = SLA_MAP[self.account]['problem'][results['problem']] # overwrite by problem
         else:
             raise MyError("unknown SFCD self.account :P")
         return results
@@ -381,21 +418,27 @@ class CaseCollector:
                 pass
             else:
                 maps[g]['result'] = data_box
+        try:
+            if not all([ len(maps[0]['result']) == len(maps[z]['result']) for z in range(1,len(maps)) if 'result' in maps[z].keys() ]):
+                raise MyError('unequal lenth of table extracts (i.e. got more case nums than subj)')
+        except MyError as e:
+            print('Error', e)
+            for r in range(len(maps)):
+                if 'result' in maps[r].keys():
+                    print(len(maps[r]['result']))
         records_box = {}
         for i in range(len(maps[0]['result'])):
-            card = {}
+            card = {'sfdc': self.account}
             for r in range(len(maps)):
                 if 'result' in maps[r].keys():
                     card[maps[r]['name']] = maps[r]['result'][i]
-            records_box[card['case']] = card # duplicates the 'case' field, but it's OK, because allows usage of **card
+            records_box[card['number']] = card # duplicates the 'number' field, but it's OK, because allows usage of **card
         return records_box
 
     def load_view_pages(self, connection, target_time = None):
         connection.handle.setref(URLS1[self.account]['closed_list_ref'])
         html = connection.sfcall(URLS1[self.account]['closed_list_url'])
-        if self.debug:
-            with open(self.temp_folder + 'sfbot_dump_' + self.account + '_close_cases_view.txt','w') as ff:
-                ff.write(html)
+        self.debug(html, 'sfbot_dump_' + self.account + '_close_cases_view.txt', destination='file')
         pages = []
         page_index = 1
         upto_page = 999
@@ -421,7 +464,8 @@ class CaseCollector:
             os.remove(self.temp_folder + self.account + '_sfcookie.pickle')   # WHY ????
         except OSError:
             pass
-        connection = sfuser(self.account)
+        cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
+        connection = sfuser(cheat[self.account])
         connection.setdir(self.temp_folder)
         connection.setdebug(self.myweb_module_debug)
         connection.sflogin()
@@ -432,40 +476,33 @@ class CaseCollector:
             page = page.replace('\u200b','?')
             # page = page.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
             # I think I need to have the encoding specified during the urllib2.read( ) === myweb3
-            if self.debug:
-                try:
-                    with open(self.temp_folder + 'sfbot_dump1.txt','w') as ff:
-                        ff.write(page)
-                except UnicodeEncodeError as e:
-                    with open(self.temp_folder + 'sfbot_dump1.txt','w', encoding = 'utf-8') as ff:
-                        ff.write(page)
-                    raise MyError('Unicode fail: ' + str(e))
+            self.debug(page, 'sfbot_dump1.txt', destination='file')
             page = page.replace('u003C','<')
             page = page.replace('u003E','>')
             new_records = dict(list(new_records.items()) + list(self.view_page_table_parse(page).items()))
-        for k in new_records.keys():
+        if self.show_case_nums_during_execution:
+            print('len', len(new_records))
+        for k in sorted(new_records.keys()):
             connection.handle.setref(URLS2[self.account]['case_ref'])
             html = connection.sfcall(URLS2[self.account]['case_url'][0] + new_records[k]['link'] + URLS2[self.account]['case_url'][1])
             html = html.replace('u003C','<').replace('u003E','>')
             # KILL BAD UNICODE:
-            html = html.replace('™','?')
+            html = html.replace('™','')
             # BAD_CHARS = ['\uf04a',]
             # for ch in BAD_CHARS:
             #     html.replace(ch, '~')
-            # new_records[k]['raw'] = html # !!! scary - should zip it
-            # with open(self.temp_folder + 'case_data.html','w', encoding='utf-8') as f:
-            # with open(self.temp_folder + 'case_data.html','w') as f:
-            #     f.write(html)
+            if self.write_raw:
+                new_records[k]['raw'] = html # !!! scary - should zip it
             new_records[k] = self.parse_case_details(html, new_records[k])
             new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
-            new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['sla']
-            new_records[k]['in_response_sla'] = new_records[k]['response_time'] < SLA_RESPONSE[self.account]
+            new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
+            new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
             new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
             # ----- PROCESS RESOLUTION TIME IN SF -----
             if self.account == 'st' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
-                print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['case']))
+                print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
                 new_html = save_resolution_time(connection, new_records[k], hours_str) # the POST should return new html
-                if new_records[k]['raw']:
+                if self.write_raw:
                     new_records[k]['raw'] = new_html
         connection.handle.close()
         return new_records
@@ -483,7 +520,7 @@ class CaseCollector:
     def save(self):
         if self.records:
             for case in self.records.keys():
-                row = { k, self.records[case][k] for k in ['some', 'list', 'of', 'fields', 'that', 'match', 'the', 'model'] }
+                row = { (k, self.records[case][k]) for k in ['some', 'list', 'of', 'fields', 'that', 'match', 'the', 'model'] }
                 p = Shift(**row)
                 p.save()
             return True
@@ -491,56 +528,56 @@ class CaseCollector:
             return False
         
     def filter(self, target_agent_name = None, target_time = None):
-
         for k in self.records.keys():
             # THE MONTH FILTERING HAPPENS HERE ------------------------------------
-            if self.target_month in self.records[k]['closedate']:
+            if self.target_month in self.records[k]['closed']:
                 self.syslabox[self.records[k]['system']]['count']        += 1
                 self.syslabox[self.records[k]['system']]['out_sup_sla']  += not self.records[k]['in_support_sla']
                 self.syslabox[self.records[k]['system']]['out_resp_sla'] += not self.records[k]['in_response_sla']
                 self.syslabox[self.records[k]['system']]['combined']     += not self.records[k]['in_sla']
-                self.month_records[self.records[k]['case']] = self.records[k]
+                self.month_records[self.records[k]['number']] = self.records[k]
         for sla_type in ['out_sup_sla', 'out_resp_sla', 'combined']:
             self.syslabox['total'][sla_type] = sum([ self.syslabox[z][sla_type] for z in SYSTEMS[self.account]])
         self.mo_len = len(self.month_records)
 
     def view(self, target_agent_name = None, target_time = None):
+        self.target_month = datetime.strftime(target_time, '/%m/%Y')
+        results = ''
         self.filter(target_agent_name, target_time)
-        print("SFDC account: ", self.account)
-        # print('number of pages requested:', self.page_back)
-        print('number of records per page:', self.num_records_to_pull)
-        print('Target: all cases closed in:', self.target_month)
-        print('New cases added:', self.new_len)
-        print('-------------------------------')
-        print("States considered as pending to support: ", self.support_statuses[self.account])
+        results += "SFDC account: " + self.account + '\n'
+        # results += 'number of pages requested:' + self.page_back + '\n'
+        results += 'number of records per page:' + self.num_records_to_pull + '\n'
+        results += 'Target: all cases closed in:' + self.target_month + '\n'
+        results += 'New cases added:' + str(self.new_len) + '\n'
+        results += '-------------------------------' + '\n'
+        results += "States considered as pending to support: " + str(SUPPORT_STATUSES[self.account]) + '\n'
         for k in sorted(self.month_records.keys()):
             card = self.month_records[k]
             if card['in_sla']:
-                print('Case: %s\t%s' %(card['case'], card['subject']))
+                results += 'Case: %s\t%s' % (card['number'], card['subject']) + '\n'
             elif not card['in_response_sla']:
-                print('Case: %s\t%s' %(card['case'], card['subject']))
-                print('System: %s\tPriority: %s\tTarget Response: %.2fh\tActual: %.2fh' %
-                    (card[OUT_SLA_VIEW_DETAILS[self.account][0]], card[OUT_SLA_VIEW_DETAILS[self.account][1]],
-                    SLA_RESPONSE[self.account], card['response_time']))
-                print()
+                results += 'Case: %s\t%s' %(card['number'], card['subject']) + '\n'
+                result += 'System: %s\tPriority: %s\tTarget Response: %.2fh\tActual: %.2fh' %(
+                    card[OUT_SLA_VIEW_DETAILS[self.account][0]], card[OUT_SLA_VIEW_DETAILS[self.account][1]],
+                    SLA_RESPONSE[self.account], card['response_time'])
+                result += '\n'
             else:
-                print('Case: %s\t%s' %(card['case'], card['subject']))
-                print('System: %s\tPriority: %s\tTarget Response: %.2fh\tActual: %.2fh' %
-                    (card[OUT_SLA_VIEW_DETAILS[self.account][0]], card[OUT_SLA_VIEW_DETAILS[self.account][1]],
-                    card['sla'], card['support_time']))
-                print()
-        print('-------------------------------')
-        print('Cases closed in', self.target_month, ':', self.mo_len)
+                results += 'Case: %s\t%s' %(card['number'], card['subject']) + '\n'
+                result += 'System: %s\tPriority: %s\tTarget Response: %.2fh\tActual: %.2fh' %(
+                    card[OUT_SLA_VIEW_DETAILS[self.account][0]], card[OUT_SLA_VIEW_DETAILS[self.account][1]],
+                    card['support_sla'], card['support_time'])
+                result += '\n'
+        results += '-------------------------------' + '\n'
+        results += 'Cases closed in' + str(self.target_month) + ':' + str(self.mo_len) + '\n'
         if self.mo_len > 0:
-            print("Out of support SLA count :", self.syslabox['total']['out_sup_sla'],
-                ", which is",100.00 * (self.syslabox['total']['out_sup_sla'] / self.mo_len), "%")
-            print("Out of response SLA count:", self.syslabox['total']['out_resp_sla'],
-                ", which is",100.00 * (self.syslabox['total']['out_resp_sla'] / self.mo_len), "%")
-            print("Combined Out of SLA      :", 100.00 * (self.syslabox['total']['combined'] / self.mo_len), "%")
-        print('-------------------------------')
-        print("Count OUT_resp OUT_supp  --- system")
+            result += "Out of support SLA count :" + str(self.syslabox['total']['out_sup_sla']) + ", which is" + str(100.00*(self.syslabox['total']['out_sup_sla']/self.mo_len)) + "%"
+            result += "Out of response SLA count:" + str(self.syslabox['total']['out_resp_sla']) + ", which is" + str(100.00*(self.syslabox['total']['out_resp_sla']/self.mo_len)) + "%"
+            results += "Combined Out of SLA      :" + str(100.00*(self.syslabox['total']['combined']/self.mo_len)) + "%" + '\n'
+        results += '-------------------------------' + '\n'
+        results += "Count OUT_resp OUT_supp  --- system" + '\n'
         for sys in SYSTEMS[self.account]:
-            print(self.syslabox[sys]['count'], self.syslabox[sys]['out_resp_sla'], self.syslabox[sys]['out_sup_sla'], 'for system', sys, sep='\t')
+            results += str(self.syslabox[sys]['count']) + '\t' + str(self.syslabox[sys]['out_resp_sla']) + '\t' + str(self.syslabox[sys]['out_sup_sla']) + '\t' + 'for system' + '\t' + sys + '\n'
+        return results
 
     def reload(self, *dump):
         self.load_pickle()
@@ -554,6 +591,7 @@ class CaseCollector:
 
     def update(self, target_agent_name = None, target_time = None): # = 
         self.load_web_and_merge(target_agent_name, target_time)
+        return [ self.records[k] for k in sorted(self.records.keys()) ]
         self.sync()
 
     def sync(self):
@@ -578,22 +616,24 @@ class CaseCollector:
         sql = "DELETE FROM %s;" % (table_name, )
         cursor.execute(sql)
 
-test = CaseCollector()
-test.load_pickle()
-test.load_web_and_merge() # can be base for both reload(with target = None), and as update(targets set)
+# test = CaseCollector()
+# test.load_pickle()
+# test.load_web_and_merge(datetime(2013,9,1)) # can be base for both reload(with target = None), and as update(targets set)
 #    load_web_data -- technically loads without 'merge', but uses return instead of a class property for delivering the results
-test.save_pickle()
+# test.save_pickle()
 #    save 
-test.view(target_time='/10/2013')
+# test.view(target_time='/10/2013')
 
 # TODO:
-# make view() return instead of print
-# >> test via django
-# clear unneccessary files created via "if self.debug..."
-# make load, save & sync use the DB
-# review the records fields -- make the relevant ones associate with the other models
-# >> full reload test
+# make view() return instead of print        DONE
+# >> test via django                         DONE
+# clear unneccessary "if self.debug..."      DONE
+# define fields related to other models      DONE
 # merge URLS constant
+# review the records fields for consistency 
+# pass South migration
+# make load, save & sync use the DB
+# >> full reload test
 # implement comments
 # 
 # 
