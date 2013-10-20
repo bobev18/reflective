@@ -16,7 +16,7 @@ class CallAdmin(admin.ModelAdmin):
    list_display = ('agent', 'shift', 'case', 'filename', 'date', 'case')
 
 class CommentAdmin(admin.ModelAdmin):
-   list_display = ('agent', 'shift', 'case', 'call', 'added', 'message', 'postpone', 'postponedate', 'byclient', 'raw')
+   list_display = ('agent', 'shift', 'case', 'call', 'added', 'message', 'postpone', 'byclient')
 
 class ResourceAdmin(admin.ModelAdmin):
    list_display = ('name', 'last_sync', 'module', 'class_name')

@@ -3,7 +3,7 @@ import re, pickle, os, sys
 from datetime import datetime, timedelta
 from datetime import time as dtime
 import django.utils.timezone as timezone
-from django2wrap.models import Agent, Shift, Call, Resource, Case
+from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
 from django.db import connection
 from django.conf import settings
 
@@ -92,13 +92,15 @@ HISTORY_TABLE_MAPS = {
     'WLK': r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">(?P<action>.+?)</t',
     'RSL' : r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">.+?</t.+?class=" dataCell  ">(?P<action>.+?)</t',
 }
-URLS1 = {
+URLS = {
     'WLK':{
         'closed_list_ref': 'https://eu1.salesforce.com/home/home.jsp',
         'closed_list_url': 'https://eu1.salesforce.com/500/x?fcf=00B20000004wphi&rolodexIndex=-1&page=1',
         'filter_txdata'  : 'action=filter&filterId=00B20000004wphi&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&vf=undefined&isdtp=null',
         'filter_ref'     : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
         'filter_url'     : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        'case_ref': 'https://eu1.salesforce.com/500/o',
+        'case_url': ['https://eu1.salesforce.com/', '?rowsperlist=100'],
     },
     'RSL' : {
         'closed_list_ref': 'https://emea.salesforce.com/home/home.jsp',
@@ -107,32 +109,20 @@ URLS1 = {
         'filter_txdata'  : 'action=filter&filterId=00B20000002BA4l&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&',
         'filter_ref'     : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
         'filter_url'     : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
-    }
-}
-URLS2 = {
-    'WLK':{
-        'case_ref': 'https://eu1.salesforce.com/500/o',
-        'case_url': ['https://eu1.salesforce.com/', '?rowsperlist=100'],
-    },
-    'RSL' : {
         'case_ref': 'https://emea.salesforce.com/500/o',
         'case_url': ['https://emea.salesforce.com/', '?rowsperlist=100'],
-                    # https://emea.salesforce.com/5002000000XbMTa
-                    # https://emea.salesforce.com/,  ?rowsperlist=100
     }
 }
-
 OUT_SLA_VIEW_DETAILS = {
-    'WLK': ['system', 'severity'],
+    'WLK': ['system', 'priority'],
     'RSL' : ['reason', 'problem']
 }
 HTML_CODE_PATTERN = re.compile(r'<.*?>')
-
 SUPPORT_STATUSES = {
     'WLK': { 'response': ['Created', 'New'], 'work': ['Created', 'New', 'In Progress', 'Responded', ], 'owner': 'Wightlink Support Team' },
     'RSL' : { 'owner': 'Support', 'response': ['Created', 'New'], 'work': ['Created', 'New', 'Responded', 'Working on Resolution',] } # , 'Working on L2 Resolution'] }
 } 
-
+MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'raw', 'postpone', 'target_chase', ]
 def p(*args, sep=' ', end='\n' ):
     sep = sep.encode('utf8')
     end = end.encode('utf8')
@@ -159,7 +149,7 @@ class MyError(Exception):
 
 class CaseCollector:
 
-    def __init__(self, debug=None):
+    def __init__(self, debug = None, account = 'WLK'):
         self.debug_flag = debug
         ###########################################################################################
         ## VALUE DETERMINING IF THE initial list of cases is pulled from the WEB or from the HDD ##
@@ -168,9 +158,9 @@ class CaseCollector:
         ## ..................................................................................... ##
         self.target_month = datetime.strftime(datetime.now() + timedelta(days=-30), '/%m/%Y')
         ## ..................................................................................... ##
-        self.account = 'RSL' # since v 1.4 this cannot be st
+        self.account = account # 'RSL'
         ## ..................................................................................... ##
-        self.num_records_to_pull = '50'
+        self.num_records_to_pull = '20'
         ## ..................................................................................... ##
         # self.page_back = 'all' # takes int ot the default value 'all'
         ## ..................................................................................... ##
@@ -223,6 +213,62 @@ class CaseCollector:
         except IOError as e:
             self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
             return False
+
+    def _find_postpone(self, text):
+        postpones = re.findall(r'resume chas(e|ing)( on){0,1} {0,2}(?P<day>\d\d).(?P<month>\d\d).(?P<year>\d\d\d\d)', text, flags=re.IGNORECASE)
+        if len(postpones) > 0:
+            return datetime(**postpones[0].groupdict())
+        else:
+            return None
+
+    def _find_target_chase(self, case):
+        now = datetime.now()
+        if now.weekday() == 5: #if it's Saturday
+            target_time = now - timedelta(days = 1)
+        elif now.weekday() == 6: # if it's Sunday
+            target_time = now - timedelta(days = 2)
+        else:
+            target_time = now
+        target_time = target_time.replace(hour = 0, minute = 0)
+        #for card in bigbox:
+        # push back chase based on 'Logged as Defect'
+        if case['status'] == 'Logged as Defect':
+            last_wednesday = target_time - timedelta(days = (target_time.weekday() - 2) % 7)
+            target_time = last_wednesday
+        return target_time
+
+    def _is_chased(self, case):
+        chased = False
+        if len(case['comments']) > 0:
+            comment = case['comments'][0] ## the latest comment
+            comment_time = datetime.strptime(comment['added'], '%d/%m/%Y %H:%M')
+            if case['postpone']: # case's postpone should always match comment's
+                chased = case['postpone'] > datetime.now()
+            else:
+                chased = not comment['byclient'] and comment['added'] > case['target_chase']
+        return chased
+
+    def _capture_comment_info(self, html, record):
+        results = record
+        comment_table = parse(html, '<th scope="col" class=" zen-deemphasize">Comment</th>','</table>')
+        comment_pattern = re.compile(r'Created By: <a href="(?P<link>.+?)">(?P<user>.+?)</a> \((?P<added>.+?)\).*?</b>(?P<message>.+?)</td></tr>')
+        # the ".*?" handles the <public> last modified, whih is given separated by '|'
+        comments = [ z.groupdict() for z in comment_pattern.finditer(comment_table) ]
+        if len(comments) > 0:
+            for i in range(len(comments)):
+                comments[i]['added'] = datetime.strptime(comments[i]['added'], '%d/%m/%Y %H:%M')
+                comments[i]['postpone'] = self._find_postpone(comments[i]['message'])
+                comments[i]['byclient'] = comments[i]['user'] != 'StressTester Support' and comments[i]['user'] != 'Wightlink Support Team'
+                # comments[i]['agent'] = 
+                # comments[i]['shift'] = 
+                # comments[i]['call'] = 
+                comments[i] = { k:comments[i][k] for k in comments[i].keys() if k not in ['user', 'link'] }
+        results['comments'] = comments
+        ##### next 3 should be in specific order
+        results['postpone'] = comments[0]['postpone'] # case postpone is on, only if the postpone is in the last comment
+        results['target_chase'] = self._find_target_chase(results)
+        results['chased'] = self._is_chased(results)
+        return results
     
     def _worktime_diffference(self, start, end):
         self.debug('Start of period: ', start.strftime('%d/%m/%Y %H:%M'))
@@ -342,9 +388,9 @@ class CaseCollector:
         self.debug('Case %s: response time %.2f and support time: %.2fh ' % (record['number'], response_time, support_time))
         return support_time, response_time
 
-    def parse_case_details(self, html, record):
-        results = record
-        results['closed'] = siphon(html,'ClosedDate_ileinner">','</div>')
+    def _captute_common_case_details(self, html, results):
+        results['closed'] = datetime.strptime(siphon(html,'ClosedDate_ileinner">','</div>'), '%d/%m/%Y %H:%M')
+        results['closed'] = results['closed'].replace(tzinfo = timezone.get_default_timezone())
         results['description'] = remove_html_tags(siphon(html, 'Description</td>', '</td>'))
         results['response_sla'] = SLA_RESPONSE[self.account]
         analyst = remove_html_tags(siphon(html, 'Support Analyst</td>', '</div></td>'))
@@ -352,8 +398,11 @@ class CaseCollector:
         search_range = (results['created'] + timedelta(hours=-8), results['created'] + timedelta(minutes=10))
         shifts_that_time = Shift.objects.filter(date__range=search_range)
         if len(shifts_that_time) == 0: #expand into out of hours i.e OT
+            # print('shifts1', shifts_that_time)
             search_range = (results['created'].replace(hour=0, minute=0), results['created'].replace(hour=23,minute=59))
+            # print('range', search_range)
             shifts_that_time = Shift.objects.filter(date__range=search_range)
+            # print('shifts2', shifts_that_time)
         possible_shift = [ z for z in shifts_that_time if analyst.count(z.agent.name)]
         if len(possible_shift) == 0 and len(shifts_that_time) > 0:
             if results['created'].hour < 12:
@@ -372,29 +421,39 @@ class CaseCollector:
                 print(sh)
             raise MyError('more than 2 matching shifts for time: ' + str(results['created']))
         results['creator'] = results['shift'].agent
-        ##### reconsider once comments are implemented
-        results['postpone'] = False
-        results['postponedate'] = None
-        results['target_chase'] = datetime.now() # to avoid re-calculation on every chasecheck
-        #####
+        results['reason'] = siphon(html, '<div id="cas6_ileinner">', '</div>')
+        return results
+
+    def _capture_WLK_case_details(self, html, results):
+        results['priority'] = re.search(r'Severity ([123])', html).group(1)
+        for sla_key in SLA_MAP[self.account].keys():
+            if results['system'] in sla_key:
+                results['support_sla'] = SLA_MAP[self.account][sla_key][results['priority']]
+        if not results['support_sla']:
+            raise MyError('Unknown system: %s (Case: %s)' % (new_records['system'], new_records['number']))
+        return results
+
+    def _capture_RSL_case_details(self, html, results):
+        results['priority'] = siphon(html, '<div id="00N20000000uIvK_ileinner">', '</div>')
+        results['system'] = siphon(html, '<div id="00N20000000uG6j_ileinner">', '</div>')
+        results['problem'] = siphon(html, '<div id="cas5_ileinner">', '</div>')
+        results['support_sla'] = -1 # undefined
+        if results['reason'] in SLA_MAP[self.account]['reason'].keys():
+            results['support_sla'] = SLA_MAP[self.account]['reason'][results['reason']] # overwrite by case reason
+        if results['problem'] in SLA_MAP[self.account]['problem'].keys():
+            results['support_sla'] = SLA_MAP[self.account]['problem'][results['problem']] # overwrite by problem
+        return results
+
+    def parse_case_details(self, html, record):
+        results = record
+        results = self._captute_common_case_details(html, results)
         if self.account == 'WLK':
-            results['severity'] = re.search(r'Severity ([123])', html).group(1)
-            for sla_key in SLA_MAP[self.account].keys():
-                if results['system'] in sla_key:
-                    results['support_sla'] = SLA_MAP[self.account][sla_key][results['severity']]
-            if not results['support_sla']:
-                raise MyError('Unknown system: %s (Case: %s)' % (new_records['system'], new_records['number']))
+            results = self._capture_WLK_case_details(html, results)
         elif self.account == 'RSL':
-            results['system'] = siphon(html, '<div id="00N20000000uG6j_ileinner">', '</div>')
-            results['problem'] = siphon(html, '<div id="cas5_ileinner">', '</div>')
-            results['reason'] = siphon(html, '<div id="cas6_ileinner">', '</div>')
-            results['support_sla'] = -1 # undefined
-            if results['reason'] in SLA_MAP[self.account]['reason'].keys():
-                results['support_sla'] = SLA_MAP[self.account]['reason'][results['reason']] # overwrite by case reason
-            if results['problem'] in SLA_MAP[self.account]['problem'].keys():
-                results['support_sla'] = SLA_MAP[self.account]['problem'][results['problem']] # overwrite by problem
+            results = self._capture_RSL_case_details(html, results)
         else:
             raise MyError("unknown SFCD self.account :P")
+        results = self._capture_comment_info(html, results)
         return results
     
     def view_page_table_parse(self, page):
@@ -436,8 +495,8 @@ class CaseCollector:
         return records_box
 
     def load_view_pages(self, connection, target_time = None):
-        connection.handle.setref(URLS1[self.account]['closed_list_ref'])
-        html = connection.sfcall(URLS1[self.account]['closed_list_url'])
+        connection.handle.setref(URLS[self.account]['closed_list_ref'])
+        html = connection.sfcall(URLS[self.account]['closed_list_url'])
         self.debug(html, 'sfbot_dump_' + self.account + '_close_cases_view.txt', destination='file')
         pages = []
         page_index = 1
@@ -447,16 +506,18 @@ class CaseCollector:
             target_time = datetime(2010,1,1)
         # for page_index in range(1, upto_page):
         while earliest_date > target_time and upto_page > page_index:
-            txdata  = URLS1[self.account]['filter_txdata'] %(str(page_index), self.num_records_to_pull)
+            txdata  = URLS[self.account]['filter_txdata'] %(str(page_index), self.num_records_to_pull)
             connection.handle.setdata(txdata)
-            connection.handle.setref(URLS1[self.account]['filter_ref'])
-            html = connection.sfcall(URLS1[self.account]['filter_url'])
+            connection.handle.setref(URLS[self.account]['filter_ref'])
+            html = connection.sfcall(URLS[self.account]['filter_url'])
             pages.append(html)
+            # self.debug_flag = True
             self.debug('table view page', page_index, ':', html)
+            # self.debug_flag = False
             page_index += 1
             if target_time == datetime(2010,1,1):
                 upto_page = (int(siphon(html, '"totalRowCount":', ',')) // int(self.num_records_to_pull)) + 1
-            earliest_date = datetime.strptime(re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"],"NAME":', html)[0], '%d/%m/%Y %H:%M')
+            earliest_date = datetime.strptime(re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"],".+?":', html)[0], '%d/%m/%Y %H:%M')
         return pages
     
     def load_web_data(self, target_time = None):
@@ -483,8 +544,8 @@ class CaseCollector:
         if self.show_case_nums_during_execution:
             print('len', len(new_records))
         for k in sorted(new_records.keys()):
-            connection.handle.setref(URLS2[self.account]['case_ref'])
-            html = connection.sfcall(URLS2[self.account]['case_url'][0] + new_records[k]['link'] + URLS2[self.account]['case_url'][1])
+            connection.handle.setref(URLS[self.account]['case_ref'])
+            html = connection.sfcall(URLS[self.account]['case_url'][0] + new_records[k]['link'] + URLS[self.account]['case_url'][1])
             html = html.replace('u003C','<').replace('u003E','>')
             # KILL BAD UNICODE:
             html = html.replace('™','')
@@ -493,6 +554,8 @@ class CaseCollector:
             #     html.replace(ch, '~')
             if self.write_raw:
                 new_records[k]['raw'] = html # !!! scary - should zip it
+            else:
+                new_records[k]['raw'] = ''
             new_records[k] = self.parse_case_details(html, new_records[k])
             new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
             new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
@@ -514,20 +577,7 @@ class CaseCollector:
         self.new_len = len(new_records)
         self.end_len = len(self.records) # != new + load because of merge
 
-    ################################################################################################################
-    ################################################################################################################
-    
-    def save(self):
-        if self.records:
-            for case in self.records.keys():
-                row = { (k, self.records[case][k]) for k in ['some', 'list', 'of', 'fields', 'that', 'match', 'the', 'model'] }
-                p = Shift(**row)
-                p.save()
-            return True
-        else:
-            return False
-        
-    def filter(self, target_agent_name = None, target_time = None):
+    def calculate_monthly(self):
         for k in self.records.keys():
             # THE MONTH FILTERING HAPPENS HERE ------------------------------------
             if self.target_month in self.records[k]['closed']:
@@ -540,10 +590,10 @@ class CaseCollector:
             self.syslabox['total'][sla_type] = sum([ self.syslabox[z][sla_type] for z in SYSTEMS[self.account]])
         self.mo_len = len(self.month_records)
 
-    def view(self, target_agent_name = None, target_time = None):
-        self.target_month = datetime.strftime(target_time, '/%m/%Y')
+    def monthly(self, target_month = None): 
+        self.target_month = datetime.strftime(target_month, '/%m/%Y')
+        self.calculate_monthly() #generates the stats
         results = ''
-        self.filter(target_agent_name, target_time)
         results += "SFDC account: " + self.account + '\n'
         # results += 'number of pages requested:' + self.page_back + '\n'
         results += 'number of records per page:' + self.num_records_to_pull + '\n'
@@ -579,61 +629,143 @@ class CaseCollector:
             results += str(self.syslabox[sys]['count']) + '\t' + str(self.syslabox[sys]['out_resp_sla']) + '\t' + str(self.syslabox[sys]['out_sup_sla']) + '\t' + 'for system' + '\t' + sys + '\n'
         return results
 
+    ################################################################################################################
+    ################################################################################################################
+
+    def view(self, target_agent_name = None, target_time = None):
+        def itemize(case):
+            fields = [ getattr(case, z) for z in MODEL_ARG_LIST ]
+            for field in fields:
+                if type(field) == datetime:
+                    field = field.strftime("%d/%m/%y %H:%M")
+            # case_time = timezone.make_aware(case.date, timezone.get_default_timezone())
+            return fields
+
+        find = Case.objects.all()
+        if target_agent_name:
+            find = find.filter(creator__name = target_agent_name)
+        if target_time:
+            find = find.filter(created__range = (target_time.replace(hour=0,minute=0),target_time.replace(hour=23,minute=59)))
+
+        results = [ itemize(z) for z in find ]
+        results.insert(0,MODEL_ARG_LIST)
+        return results
+
     def reload(self, *dump):
-        self.load_pickle()
-        self.load_web_data()
-        # resource = Resource.objects.get(name = 'cases')
-        # resource.last_sync = datetime.now()
-        # resource.save()
-        self.wipe()
-        self.save()
-        return self.records
+        results = []
+        for sys in SYSTEMS.keys():
+            self.sfdc = sys
+            self.load_web_and_merge()
+            resource = Resource.objects.get(name = 'cases')
+            resource.last_sync = datetime.now()
+            resource.save()
+            self.wipe()
+            self.save()
+            results += [ self.records[k] for k in sorted(self.records.keys()) ]
+        return results
 
     def update(self, target_agent_name = None, target_time = None): # = 
         self.load_web_and_merge(target_agent_name, target_time)
-        return [ self.records[k] for k in sorted(self.records.keys()) ]
         self.sync()
+        return [ self.records[k] for k in sorted(self.records.keys()) ]
 
+    def save_comments(self, comments, case):
+        if len(comments) > 0:
+            for comm in comments:
+                self.debug(comm)
+                p = Comment(shift=case.shift, case=case, **comm)
+                p.save()
+
+    def sync_comments(self, comments, case):
+        # print(case)
+        # print(comments)
+        # pushes to the db, only if the record is not an exact match; used to fill up missing records, whithout touching the old ones.
+        #   would fail for matching 'unique' fields -- that needs a special resolve method!
+        if len(comments) > 0:
+            for comm in comments:
+                find = Comment.objects.filter(case=case, **comm)
+                if not find:
+                    p = Comment(shift=case.shift, case=case, **comm)
+                    p.save()
+
+    def save(self):
+        if self.records:
+            for case in self.records.keys():
+                row = dict([ (k, self.records[case][k],) for k in MODEL_ARG_LIST ])
+                self.debug(row)
+                p = Case(**row)
+                p.save()
+                self.save_comments(self.records[case]['comments'], p)
+        
     def sync(self):
         # pushes to the db, only if the record is not an exact match; used to fill up missing records, whithout touching the old ones.
         #   would fail for matching 'unique' fields -- that needs a special resolve method!
         results = []
-        # kwstr = lambda **kwarg: str(kwarg)
         if self.records:
-            for case in self.records:
-                find = Case.objects.filter(**case)
+            for case in self.records.keys():
+                write_row = { k: self.records[case][k] for k in MODEL_ARG_LIST }
+                filter_row = { k: write_row[k] for k in write_row.keys() if k not in ['postpone', 'target_chase']}
+                # remove row differentiation once the postpone fields ate implemented
+                find = Case.objects.filter(**filter_row)
                 if not find:
-                    p = Case(**case)
+                    p = Case(**write_row)
                     p.save()
-                    results.append(p.items())
-            return True
-        else:
-            return False
-
+                    results.append(p)
+                    self.save_comments(self.records[case]['comments'], p)   # save comments of a new case
+                self.sync_comments(self.records[case]['comments'], find[0]) # sync comments of existing case
+ 
     def wipe(self):
         cursor = connection.cursor()
         table_name = Case._meta.db_table
         sql = "DELETE FROM %s;" % (table_name, )
         cursor.execute(sql)
 
-# test = CaseCollector()
-# test.load_pickle()
-# test.load_web_and_merge(datetime(2013,9,1)) # can be base for both reload(with target = None), and as update(targets set)
-#    load_web_data -- technically loads without 'merge', but uses return instead of a class property for delivering the results
-# test.save_pickle()
-#    save 
-# test.view(target_time='/10/2013')
+    ##################################################################################
+    ##################################################################################
+    ##################################################################################
+    ##################################################################################
+
+    def get_caselist(self, account, connection):
+        _pages=[]
+        if account == 'wlk':
+            for page in range(pages_back):
+                # call to POST desired table rows and filter/sorting                                                                                                                                                           retURL=%2F500%3Ffcf%3D00B20000004wphi%26rolodexIndex%3D-1%26page%3D1&isdtp=null
+                # clsoed
+                txdata = 'action=filter&filterId=00B20000004wphi&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&vf=undefined&retURL=%2F500%3Ffcf%3D00B20000004wphi%26rolodexIndex%3D-1%26page%3D1&isdtp=null'
+                # all open
+                txdata = 'action=newfilter&filterId=00B20000005XOp6&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=&rolodexIndex=-1&retURL=%2F500%3Ffcf%3D00B20000004wpi7%26rolodexIndex%3D-1%26page%3D1'
+                connection.handle.setdata(txdata)
+                connection.handle.setref('https://eu1.salesforce.com/500?fcf=00B20000004wphi')
+                udata = connection.sfcall('https://eu1.salesforce.com/_ui/common/list/ListServlet') # list of closed cases
+                _pages.append(udata)
+        elif account == 'st':
+            for page in range(pages_back):
+                # call to POST desired table rows and filter/sorting
+                # view007
+                txdata =    'action=filter&filterId=00B20000005EOlZ&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&retURL=%2F500%3Ffcf%00B20000005EOlZ%26rolodexIndex%3D-1%26page%3D1'
+                # all open
+                txdata = 'action=newfilter&filterId=00B20000000nD39&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&retURL=%2F500%3Ffcf%3D00B20000005EOlZ%26rolodexIndex%3D-1%26page%3D1'
+                connection.handle.setdata(txdata)
+                connection.handle.setref('https://emea.salesforce.com/500?fcf=00B20000005EOlZ')
+                udata = connection.sfcall('https://emea.salesforce.com/_ui/common/list/ListServlet')
+                _pages.append(udata)
+        else:
+            debugit('errror - wrong account identifier: ',account)
+
+        # debugit('len st pages:',len(_pages))
+        return _pages
 
 # TODO:
 # make view() return instead of print        DONE
 # >> test via django                         DONE
 # clear unneccessary "if self.debug..."      DONE
 # define fields related to other models      DONE
-# merge URLS constant
-# review the records fields for consistency 
-# pass South migration
-# make load, save & sync use the DB
-# >> full reload test
+# merge URLS constant                        DONE
+# pass South migration                       DONE
+# make load, save & sync use the DB          DONE
+# review the records fields for consistency  DONE
 # implement comments
+# add 'open' cases view (and 'all' cases view)
+# >> full reload test (not much sense to do it before comments are in place...)
 # 
 # 

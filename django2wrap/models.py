@@ -88,11 +88,11 @@ class Case(models.Model):
     response_sla = models.PositiveIntegerField() # sla # in hrs
     support_time = models.FloatField(null=True) # casetimes ## resolution time in hrs
     response_time = models.FloatField(null=True) # casetimes ## response time in hrs
-    # raw = models.TextField() # this should be added once on stable DB
+    raw = models.TextField(null=True) # this should be added once on stable DB
     
-    postpone = models.BooleanField(default=False)
-    postponedate = models.DateTimeField(blank=True, null=True)
+    postpone = models.DateTimeField(null=True)
     target_chase = models.DateTimeField()
+    chased = models.BooleanField(default=True) # actual
 
     creator = models.ForeignKey(Agent)
     shift = models.ForeignKey(Shift) # the shift during which the case was created
@@ -135,17 +135,18 @@ class Call(models.Model):
         return [play_button, self.filename, agent_name, self.date.strftime("%d/%m/%y"), self.case,] #self.shift.date]
 
 class Comment(models.Model):
-    agent = models.ForeignKey(Agent, blank=True, null=True)
+    agent = models.ForeignKey(Agent, null=True)
+    # client = models.ForeignKey(Client, null=True) 
+    byclient = models.BooleanField(default=False) #this will fall once we have Client model
     shift = models.ForeignKey(Shift)
     case = models.ForeignKey(Case)
-    call = models.ForeignKey(Call, blank=True, null=True)
+    call = models.ForeignKey(Call, null=True)
     # email_message = models.ForeignKey(EmailMessage)
     added = models.DateTimeField()
     message = models.TextField()
-    postpone = models.BooleanField(default=False)
-    postponedate = models.DateTimeField(blank=True, null=True)
-    byclient = models.BooleanField(default=False)
-    raw = models.TextField() # udata
+    # postpone = models.BooleanField(default=False) # lacking the DateTime field is indication of no postpone
+    postpone = models.DateTimeField(null=True)
+    # raw = models.TextField()
     
     def __str__(self):
         return self.case + ': ' + str(self.added)

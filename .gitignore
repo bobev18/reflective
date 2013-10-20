@@ -8,3 +8,4 @@ chasecheck/bicrypt.py
 __pycache__/
 *mysqldb.cnf
 django4r.db.sqlite3
+django2wrap/migrations/
