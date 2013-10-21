@@ -153,8 +153,9 @@ class PhoneCalls:
         # this is needed to overcome bug: https://code.djangoproject.com/ticket/16426
     
     def reload(self, *dump):
-        self.wipe()
+        raise MyError('You\'ll thank me later')
         self.load()
+        self.wipe()
         self.save()
         resource = Resource.objects.get(name = 'calls')
         resource.last_sync = datetime.now()

@@ -134,8 +134,9 @@ class ScheduleShifts:
         cursor.execute(sql)
 
     def reload(self, *dump):
-        self.wipe()
+        raise MyError('You\'ll thank me later')
         self.load()
+        self.wipe()
         self.save()
         resource = Resource.objects.get(name = 'shifts')
         resource.last_sync = datetime.now(timezone.get_default_timezone())

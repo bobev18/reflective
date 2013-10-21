@@ -73,7 +73,8 @@ CLOSED_VIEW_MAPS = {
         {'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
         {'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
         {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
-        {'name': 'number',    're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
+        {'name': 'closed',  're_start': r'"CASES\.CLOSED_DATE":',  'inner_index': None},
+        {'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
         {'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
         {'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
     ],
@@ -83,7 +84,8 @@ CLOSED_VIEW_MAPS = {
         {'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
         {'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
         {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
-        {'name': 'number',    're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
+        {'name': 'closed',  're_start': r'"CASES\.CLOSED_DATE":',  'inner_index': None},
+        {'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
         {'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
         {'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
     ]
@@ -94,21 +96,40 @@ HISTORY_TABLE_MAPS = {
 }
 URLS = {
     'WLK':{
-        'closed_list_ref': 'https://eu1.salesforce.com/home/home.jsp',
-        'closed_list_url': 'https://eu1.salesforce.com/500/x?fcf=00B20000004wphi&rolodexIndex=-1&page=1',
-        'filter_txdata'  : 'action=filter&filterId=00B20000004wphi&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&vf=undefined&isdtp=null',
-        'filter_ref'     : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
-        'filter_url'     : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        'closed_view_ref': 'https://eu1.salesforce.com/home/home.jsp',
+        'closed_view_url': 'https://eu1.salesforce.com/500/x?fcf=00B20000004wphi&rolodexIndex=-1&page=1',
+        'closed_filter_txdata'  : 'action=filter&filterId=00B20000004wphi&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&vf=undefined&isdtp=null',
+        'closed_filter_ref'     : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
+        'closed_filter_url'     : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        'all_view_ref'   : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
+        'all_view_url'   : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
+        'all_filter_txdata'     : 'action=filter&filterId=00B20000005XOoX&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+        'all_filter_ref'        : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
+        'all_filter_url'        : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        'open_view_ref'  : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
+        'open_view_url'  : 'https://eu1.salesforce.com/500?fcf=00B20000005XOp6',
+        'open_filter_txdata'     : 'action=filter&filterId=00B20000005XOp6&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+        'open_filter_ref'        : 'https://eu1.salesforce.com/500?fcf=00B20000005XOp6',
+        'open_filter_url'        : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
         'case_ref': 'https://eu1.salesforce.com/500/o',
         'case_url': ['https://eu1.salesforce.com/', '?rowsperlist=100'],
     },
     'RSL' : {
-        'closed_list_ref': 'https://emea.salesforce.com/home/home.jsp',
-        'closed_list_url': 'https://emea.salesforce.com/500?lsi=-1&fcf=00B20000002BA4l',
-                          # action=filter&filterId=00B20000002BA4l&filterType=t&page=1&rowsPerPage=200&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&retURL=%2F500%3Ffcf%3D00B20000002BA4l%26rolodexIndex%3D-1%26page%3D1
-        'filter_txdata'  : 'action=filter&filterId=00B20000002BA4l&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&',
-        'filter_ref'     : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
-        'filter_url'     : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
+        'closed_view_ref': 'https://emea.salesforce.com/home/home.jsp',
+        'closed_view_url': 'https://emea.salesforce.com/500?lsi=-1&fcf=00B20000002BA4l',
+        'closed_filter_txdata'  : 'action=filter&filterId=00B20000002BA4l&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&',
+        'closed_filter_ref'     : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
+        'closed_filter_url'     : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
+        'all_view_ref'   : 'https://emea.salesforce.com/500/o',
+        'all_view_url'   : 'https://emea.salesforce.com/500?fcf=00B20000005Dl6N',
+        'all_filter_txdata'     : 'action=filter&filterId=00B20000005Dl6N&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+        'all_filter_ref'        : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
+        'all_filter_url'        : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
+        'open_view_ref'  : 'https://emea.salesforce.com/500/o',
+        'open_view_url'  : 'https://emea.salesforce.com/500?fcf=00B20000005Dl6N',
+        'open_filter_txdata'     : 'action=filter&filterId=00B20000000nD39&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+        'open_filter_ref'        : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
+        'open_filter_url'        : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
         'case_ref': 'https://emea.salesforce.com/500/o',
         'case_url': ['https://emea.salesforce.com/', '?rowsperlist=100'],
     }
@@ -122,7 +143,7 @@ SUPPORT_STATUSES = {
     'WLK': { 'response': ['Created', 'New'], 'work': ['Created', 'New', 'In Progress', 'Responded', ], 'owner': 'Wightlink Support Team' },
     'RSL' : { 'owner': 'Support', 'response': ['Created', 'New'], 'work': ['Created', 'New', 'Responded', 'Working on Resolution',] } # , 'Working on L2 Resolution'] }
 } 
-MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'raw', 'postpone', 'target_chase', ]
+MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'raw', 'postpone', 'target_chase', 'chased' ]
 def p(*args, sep=' ', end='\n' ):
     sep = sep.encode('utf8')
     end = end.encode('utf8')
@@ -215,38 +236,42 @@ class CaseCollector:
             return False
 
     def _find_postpone(self, text):
-        postpones = re.findall(r'resume chas(e|ing)( on){0,1} {0,2}(?P<day>\d\d).(?P<month>\d\d).(?P<year>\d\d\d\d)', text, flags=re.IGNORECASE)
+        postpones = re.finditer(r'resume chas(e|ing)( on){0,1} {0,2}(?P<day>\d\d).(?P<month>\d\d).(?P<year>\d\d\d\d)', text, flags=re.IGNORECASE)
+        postpones = [ { k: int(z.groupdict()[k]) for k in z.groupdict().keys() } for z in postpones ]
         if len(postpones) > 0:
-            return datetime(**postpones[0].groupdict())
+            return datetime(tzinfo=timezone.get_default_timezone(), **postpones[0])
         else:
             return None
 
     def _find_target_chase(self, case):
-        now = datetime.now()
+        now = timezone.now()
         if now.weekday() == 5: #if it's Saturday
             target_time = now - timedelta(days = 1)
         elif now.weekday() == 6: # if it's Sunday
             target_time = now - timedelta(days = 2)
         else:
             target_time = now
-        target_time = target_time.replace(hour = 0, minute = 0)
+        target_time = target_time.replace(hour = 0, minute = 0, second=0, microsecond=0)
         #for card in bigbox:
         # push back chase based on 'Logged as Defect'
         if case['status'] == 'Logged as Defect':
             last_wednesday = target_time - timedelta(days = (target_time.weekday() - 2) % 7)
             target_time = last_wednesday
-        return target_time
+        return target_time.replace(tzinfo=timezone.get_default_timezone())
 
     def _is_chased(self, case):
-        chased = False
-        if len(case['comments']) > 0:
-            comment = case['comments'][0] ## the latest comment
-            comment_time = datetime.strptime(comment['added'], '%d/%m/%Y %H:%M')
-            if case['postpone']: # case's postpone should always match comment's
-                chased = case['postpone'] > datetime.now()
-            else:
-                chased = not comment['byclient'] and comment['added'] > case['target_chase']
-        return chased
+        if case['status'].count('Close'):
+            return True
+        else:
+            chased = False
+            if len(case['comments']) > 0:
+                comment = case['comments'][0] ## the latest comment
+                # comment_time = datetime.strptime(comment['added'], '%d/%m/%Y %H:%M')
+                if case['postpone']: # case's postpone should always match comment's
+                    chased = case['postpone'] > timezone.now()
+                else:
+                    chased = not comment['byclient'] and comment['added'] > case['target_chase']
+            return chased
 
     def _capture_comment_info(self, html, record):
         results = record
@@ -257,17 +282,21 @@ class CaseCollector:
         if len(comments) > 0:
             for i in range(len(comments)):
                 comments[i]['added'] = datetime.strptime(comments[i]['added'], '%d/%m/%Y %H:%M')
+                comments[i]['added'] = comments[i]['added'].replace(tzinfo=timezone.get_default_timezone())
+                comments[i]['message'] = re.sub(r'(\r\n)+', '\n', comments[i]['message'], re.MULTILINE)
+                comments[i]['message'] = re.sub(r'(\r<br>)+', '<br>', comments[i]['message'], re.MULTILINE)
                 comments[i]['postpone'] = self._find_postpone(comments[i]['message'])
                 comments[i]['byclient'] = comments[i]['user'] != 'StressTester Support' and comments[i]['user'] != 'Wightlink Support Team'
                 # comments[i]['agent'] = 
                 # comments[i]['shift'] = 
                 # comments[i]['call'] = 
                 comments[i] = { k:comments[i][k] for k in comments[i].keys() if k not in ['user', 'link'] }
+            results['postpone'] = comments[0]['postpone'] # case postpone is on, only if the postpone is in the last comment
+        else:
+            results['postpone'] = None
         results['comments'] = comments
-        ##### next 3 should be in specific order
-        results['postpone'] = comments[0]['postpone'] # case postpone is on, only if the postpone is in the last comment
         results['target_chase'] = self._find_target_chase(results)
-        results['chased'] = self._is_chased(results)
+        results['chased'] = self._is_chased(results) # requires results['target_chase'] to function
         return results
     
     def _worktime_diffference(self, start, end):
@@ -389,8 +418,12 @@ class CaseCollector:
         return support_time, response_time
 
     def _captute_common_case_details(self, html, results):
-        results['closed'] = datetime.strptime(siphon(html,'ClosedDate_ileinner">','</div>'), '%d/%m/%Y %H:%M')
-        results['closed'] = results['closed'].replace(tzinfo = timezone.get_default_timezone())
+        results['closed'] = siphon(html,'ClosedDate_ileinner">','</div>')
+        if results['closed'] == '&nbsp;':
+            results['closed'] = None
+        else:
+            results['closed'] = datetime.strptime(results['closed'], '%d/%m/%Y %H:%M')
+            results['closed'] = results['closed'].replace(tzinfo = timezone.get_default_timezone())
         results['description'] = remove_html_tags(siphon(html, 'Description</td>', '</td>'))
         results['response_sla'] = SLA_RESPONSE[self.account]
         analyst = remove_html_tags(siphon(html, 'Support Analyst</td>', '</div></td>'))
@@ -398,11 +431,8 @@ class CaseCollector:
         search_range = (results['created'] + timedelta(hours=-8), results['created'] + timedelta(minutes=10))
         shifts_that_time = Shift.objects.filter(date__range=search_range)
         if len(shifts_that_time) == 0: #expand into out of hours i.e OT
-            # print('shifts1', shifts_that_time)
             search_range = (results['created'].replace(hour=0, minute=0), results['created'].replace(hour=23,minute=59))
-            # print('range', search_range)
             shifts_that_time = Shift.objects.filter(date__range=search_range)
-            # print('shifts2', shifts_that_time)
         possible_shift = [ z for z in shifts_that_time if analyst.count(z.agent.name)]
         if len(possible_shift) == 0 and len(shifts_that_time) > 0:
             if results['created'].hour < 12:
@@ -462,7 +492,6 @@ class CaseCollector:
         for i in range(1, len(maps)):
             big_re += r'(\[.+?\]),' + maps[i]['re_start']
         mgroups = re.search(big_re, page, re.DOTALL).groups()
-        # mgroups = m.groups()
         self.debug('found', len(mgroups), 'groups')
         for g in range(len(mgroups)):
             clean_data = re.sub(r'(?<!([\[,]))"(?![,\]])', r'\\"', mgroups[g].replace('"["','"[ "')) #replace is just for 1742
@@ -495,9 +524,11 @@ class CaseCollector:
         return records_box
 
     def load_view_pages(self, connection, target_time = None):
-        connection.handle.setref(URLS[self.account]['closed_list_ref'])
-        html = connection.sfcall(URLS[self.account]['closed_list_url'])
+        connection.handle.setref(URLS[self.account]['all_view_ref'])
+        html = connection.sfcall(URLS[self.account]['all_view_url'])
+        self.debug_flag = True
         self.debug(html, 'sfbot_dump_' + self.account + '_close_cases_view.txt', destination='file')
+        self.debug_flag = False
         pages = []
         page_index = 1
         upto_page = 999
@@ -506,10 +537,10 @@ class CaseCollector:
             target_time = datetime(2010,1,1)
         # for page_index in range(1, upto_page):
         while earliest_date > target_time and upto_page > page_index:
-            txdata  = URLS[self.account]['filter_txdata'] %(str(page_index), self.num_records_to_pull)
+            txdata  = URLS[self.account]['all_filter_txdata'] %(str(page_index), self.num_records_to_pull)
             connection.handle.setdata(txdata)
-            connection.handle.setref(URLS[self.account]['filter_ref'])
-            html = connection.sfcall(URLS[self.account]['filter_url'])
+            connection.handle.setref(URLS[self.account]['all_filter_ref'])
+            html = connection.sfcall(URLS[self.account]['all_filter_url'])
             pages.append(html)
             # self.debug_flag = True
             self.debug('table view page', page_index, ':', html)
@@ -654,20 +685,31 @@ class CaseCollector:
     def reload(self, *dump):
         results = []
         for sys in SYSTEMS.keys():
-            self.sfdc = sys
-            self.load_web_and_merge()
-            resource = Resource.objects.get(name = 'cases')
-            resource.last_sync = datetime.now()
-            resource.save()
+            self.account = sys
+            self.load_web_and_merge(*dump)
             self.wipe()
-            self.save()
+            self.wipe_comments()
+            self.save() # this does save_comments
             results += [ self.records[k] for k in sorted(self.records.keys()) ]
+        resource = Resource.objects.get(name = 'cases')
+        resource.last_sync = datetime.now()
+        resource.save()
         return results
 
     def update(self, target_agent_name = None, target_time = None): # = 
-        self.load_web_and_merge(target_agent_name, target_time)
-        self.sync()
-        return [ self.records[k] for k in sorted(self.records.keys()) ]
+        results = []
+        for sys in SYSTEMS.keys():
+            self.account = sys
+            self.load_web_and_merge(target_agent_name, target_time)
+            self.sync()
+            results += [ self.records[k] for k in sorted(self.records.keys()) ]
+        return results
+
+    def wipe_comments(self):
+        cursor = connection.cursor()
+        table_name = Comment._meta.db_table
+        sql = "DELETE FROM %s;" % (table_name, )
+        cursor.execute(sql)
 
     def save_comments(self, comments, case):
         if len(comments) > 0:
@@ -703,16 +745,15 @@ class CaseCollector:
         results = []
         if self.records:
             for case in self.records.keys():
-                write_row = { k: self.records[case][k] for k in MODEL_ARG_LIST }
-                filter_row = { k: write_row[k] for k in write_row.keys() if k not in ['postpone', 'target_chase']}
-                # remove row differentiation once the postpone fields ate implemented
-                find = Case.objects.filter(**filter_row)
+                row = { k: self.records[case][k] for k in MODEL_ARG_LIST }
+                find = Case.objects.filter(**row)
                 if not find:
-                    p = Case(**write_row)
+                    p = Case(**row)
                     p.save()
                     results.append(p)
                     self.save_comments(self.records[case]['comments'], p)   # save comments of a new case
-                self.sync_comments(self.records[case]['comments'], find[0]) # sync comments of existing case
+                else:
+                    self.sync_comments(self.records[case]['comments'], find[0]) # sync comments of existing case
  
     def wipe(self):
         cursor = connection.cursor()
@@ -764,7 +805,7 @@ class CaseCollector:
 # pass South migration                       DONE
 # make load, save & sync use the DB          DONE
 # review the records fields for consistency  DONE
-# implement comments
+# implement comments                         DONE
 # add 'open' cases view (and 'all' cases view)
 # >> full reload test (not much sense to do it before comments are in place...)
 # 
