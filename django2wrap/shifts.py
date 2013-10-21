@@ -118,7 +118,8 @@ class ScheduleShifts:
         # kwstr = lambda **kwarg: str(kwarg)
         if self.data:
             for shift in self.data:
-                find = Shift.objects.filter(**shift)
+                # find = Shift.objects.filter(**shift)
+                find = Shift.objects.filter(date=shift['date'])
                 if not find:
                     p = Shift(**shift)
                     p.save()

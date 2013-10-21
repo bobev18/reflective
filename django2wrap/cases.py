@@ -68,12 +68,13 @@ SLA_MAP = {
 CLOSED_VIEW_MAPS = {
     'WLK': [
         {'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
-        {'name': 'system',  're_start': r'"00N200000023Rfa":',     'inner_index': None},
+        # {'name': 'system',  're_start': r'"00N200000023Rfa":',     'inner_index': None},
         {'name': 'contact', 're_start': r'"NAME":',                'inner_index': 1},
         {'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
         {'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
-        {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
+        # {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
         {'name': 'closed',  're_start': r'"CASES\.CLOSED_DATE":',  'inner_index': None},
+        {'name': 'delme',   're_start': r'"00N200000023mCS":',     'inner_index': None}, # it's the custom variant of priority 
         {'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
         {'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
         {'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
@@ -217,6 +218,18 @@ class CaseCollector:
                     raise MyError('Unicode fail: ' + str(e))
             else:
                 print(*args, sep=sep, end=end)
+
+    def clear_bad_chars(self, text):
+        # KILL BAD UNICODE
+        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', ]
+        for bc in BAD_CHARS:
+            text = text.replace(bc, '')
+        # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
+        # I think I need to have the encoding specified during the urllib2.read( ) === myweb3
+        # REGULAR CLEANS
+        text = text.replace('u003C', '<')
+        text = text.replace('u003E', '>')
+        return text
 
     def load_pickle(self):
         try:
@@ -456,6 +469,8 @@ class CaseCollector:
 
     def _capture_WLK_case_details(self, html, results):
         results['priority'] = re.search(r'Severity ([123])', html).group(1)
+        if 'system' not in results.keys():
+            results['system'] = siphon(html, '<div id="00N200000023Rfa_ileinner">', '</div>')
         for sla_key in SLA_MAP[self.account].keys():
             if results['system'] in sla_key:
                 results['support_sla'] = SLA_MAP[self.account][sla_key][results['priority']]
@@ -526,9 +541,10 @@ class CaseCollector:
     def load_view_pages(self, connection, target_time = None):
         connection.handle.setref(URLS[self.account]['all_view_ref'])
         html = connection.sfcall(URLS[self.account]['all_view_url'])
-        self.debug_flag = True
+        html = self.clear_bad_chars(html)
+        # self.debug_flag = True
         self.debug(html, 'sfbot_dump_' + self.account + '_close_cases_view.txt', destination='file')
-        self.debug_flag = False
+        # self.debug_flag = False
         pages = []
         page_index = 1
         upto_page = 999
@@ -541,6 +557,7 @@ class CaseCollector:
             connection.handle.setdata(txdata)
             connection.handle.setref(URLS[self.account]['all_filter_ref'])
             html = connection.sfcall(URLS[self.account]['all_filter_url'])
+            html = self.clear_bad_chars(html)
             pages.append(html)
             # self.debug_flag = True
             self.debug('table view page', page_index, ':', html)
@@ -564,25 +581,14 @@ class CaseCollector:
         pages = self.load_view_pages(connection, target_time)
         new_records = {}
         for page in pages:
-            # KILL BAD UNICODE:
-            page = page.replace('\u200b','?')
-            # page = page.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
-            # I think I need to have the encoding specified during the urllib2.read( ) === myweb3
             self.debug(page, 'sfbot_dump1.txt', destination='file')
-            page = page.replace('u003C','<')
-            page = page.replace('u003E','>')
             new_records = dict(list(new_records.items()) + list(self.view_page_table_parse(page).items()))
         if self.show_case_nums_during_execution:
             print('len', len(new_records))
         for k in sorted(new_records.keys()):
             connection.handle.setref(URLS[self.account]['case_ref'])
             html = connection.sfcall(URLS[self.account]['case_url'][0] + new_records[k]['link'] + URLS[self.account]['case_url'][1])
-            html = html.replace('u003C','<').replace('u003E','>')
-            # KILL BAD UNICODE:
-            html = html.replace('™','')
-            # BAD_CHARS = ['\uf04a',]
-            # for ch in BAD_CHARS:
-            #     html.replace(ch, '~')
+            html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
             if self.write_raw:
                 new_records[k]['raw'] = html # !!! scary - should zip it
             else:
@@ -725,7 +731,8 @@ class CaseCollector:
         #   would fail for matching 'unique' fields -- that needs a special resolve method!
         if len(comments) > 0:
             for comm in comments:
-                find = Comment.objects.filter(case=case, **comm)
+                # find = Comment.objects.filter(case=case, **comm)
+                find = Comment.objects.filter(case=case, added=comm['added'])
                 if not find:
                     p = Comment(shift=case.shift, case=case, **comm)
                     p.save()
@@ -746,7 +753,7 @@ class CaseCollector:
         if self.records:
             for case in self.records.keys():
                 row = { k: self.records[case][k] for k in MODEL_ARG_LIST }
-                find = Case.objects.filter(**row)
+                find = Case.objects.filter(number=self.records[case]['number'], sfdc=self.records[case]['sfdc'])
                 if not find:
                     p = Case(**row)
                     p.save()

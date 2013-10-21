@@ -133,7 +133,8 @@ class PhoneCalls:
         kwstr = lambda **kwarg: str(kwarg)
         if self.data:
             for call in self.data:
-                find = Call.objects.filter(**call)
+                # find = Call.objects.filter(**call)
+                find = Call.objects.filter(filename=call['filename'])
                 if not find:
                     p = Call(**call)
                     p.save()
