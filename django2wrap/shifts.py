@@ -90,17 +90,19 @@ class ScheduleShifts:
         
         group_by_date = {}
         for shift in self.data:
-            if shift['date'].date() in group_by_date.keys():
-                group_by_date[shift['date'].date()].append(shift)
+            if shift.date.date() in group_by_date.keys():
+                group_by_date[shift.date.date()].append(shift)
             else:
-                group_by_date[shift['date'].date()] = [shift]
+                group_by_date[shift.date.date()] = [shift]
 
         # detect odities
+        results = []
         for date in group_by_date.keys():
             if len(group_by_date[date]) < 2 or len(group_by_date[date]) > 3:
                 print(date, group_by_date[date])
+                results.append([date, group_by_date[date]])
 
-        return group_by_date
+        return results
 
     def save(self):
         if self.data:
@@ -160,7 +162,7 @@ class ScheduleShifts:
             return timezone.make_naive(shift.date, tz).strftime("%y/%m/%d")
             # return {'date': timezone.make_naive(shift.date, tz).strftime("%d/%m/%y"), 'data': (shift.agent.name[:2], shift.tipe, shift.color)}
 
-        find = Shift.objects.order_by('date')
+        self.data = find = Shift.objects.order_by('date')
         if target_agent_name:
             find = find.filter(agent__name = target_agent_name)
         if target_time:
@@ -241,6 +243,7 @@ class ScheduleShifts:
             # results.append(row_mid)
             # results.append(row_late)
 
+        # results = self.view_odities() ## !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         return results
 
     def simple_view(sefl,  target_agent_name = None, target_time = None):

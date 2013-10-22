@@ -14,21 +14,8 @@ try:
 except OSError:
     execution_location = 'Office'
 
-# import myweb2
 from chasecheck.bicrypt import BiCrypt
 import urllib.request
-# import imp
-# try:
-#     bicrypt = imp.load_source('bicrypt', '/home/bob/Documents/gits/reflective/chasecheck/bicrypt.py')
-#     execution_location = 'Laptop'
-# except IOError:
-#     bicrypt = imp.load_source('bicrypt', 'C:/gits/reflective/chasecheck/bicrypt.py')
-#     execution_location = 'Office'
-# with open(LOCATION_PATHS[execution_location]['local_settings'], 'rt') as f:
-#     module_file = f.read()
-
-# matches = re.findall(r"MODULEPASS = '(.+?)'", module_file)
-# codder = BiCrypt(matches[0])
 codder = BiCrypt(settings.MODULEPASS)
 response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
 code = response.read()      # a `bytes` object
@@ -65,72 +52,85 @@ SLA_MAP = {
         'problem': {'Question': 8, 'Problem': 16, 'Feature Request': 9999, } 
     }
 }
-CLOSED_VIEW_MAPS = {
+VIEW_MAPS = {
     'WLK': [
-        {'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
-        # {'name': 'system',  're_start': r'"00N200000023Rfa":',     'inner_index': None},
-        {'name': 'contact', 're_start': r'"NAME":',                'inner_index': 1},
-        {'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
-        {'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
-        # {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
-        {'name': 'closed',  're_start': r'"CASES\.CLOSED_DATE":',  'inner_index': None},
-        {'name': 'delme',   're_start': r'"00N200000023mCS":',     'inner_index': None}, # it's the custom variant of priority 
-        {'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
-        {'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
-        {'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
+        {'use_in': [       'closed',       ], 'name': 'system',  're_start': r'"00N200000023Rfa":',     'inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'contact', 're_start': r'"NAME":',                'inner_index': 1},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
+        {'use_in': [       'closed',       ], 'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
+        {'use_in': ['all',                 ], 'name': 'closed',  're_start': r'"CASES\.CLOSED_DATE":',  'inner_index': None},
+        {'use_in': ['all',           'open'], 'name': 'delme',   're_start': r'"00N200000023mCS":',     'inner_index': None}, # it's the custom variant of priority 
+        {'use_in': ['all', 'closed', 'open'], 'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
     ],
     'RSL': [
-        {'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
-        {'name': 'contact', 're_start': r'"NAME":',                'inner_index': 1},
-        {'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
-        {'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
-        {'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
-        {'name': 'closed',  're_start': r'"CASES\.CLOSED_DATE":',  'inner_index': None},
-        {'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
-        {'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
-        {'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'contact', 're_start': r'"NAME":',                'inner_index': 1},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'subject', 're_start': r'"CASES\.SUBJECT":',      'inner_index': 1},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'delme',   're_start': r'"CASES\.PRIORITY":',     'inner_index': None},
+        {'use_in': ['all',                 ], 'name': 'closed',  're_start': r'"CASES\.CLOSED_DATE":',  'inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'status',  're_start': r'"CASES\.STATUS":',       'inner_index': None},
+        {'use_in': ['all', 'closed', 'open'], 'name': 'delme',   're_start': r'"ACTION_COLUMN_LABELS":','inner_index': None},
     ]
 }
+['CASES.CREATED_DATE', 'NAME', 'CASES.SUBJECT', 'LIST_RECORD_ID', 'CASES.CASE_NUMBER', 'CASES.STATUS', 'ACTION_COLUMN_LABELS']
 HISTORY_TABLE_MAPS = {
     'WLK': r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">(?P<action>.+?)</t',
     'RSL' : r'class=" dataCell  ">(?P<time>.+?)</t.+?class=" dataCell  ">(?P<owner>.+?)</t.+?class=" dataCell  ">.+?</t.+?class=" dataCell  ">(?P<action>.+?)</t',
 }
 URLS = {
     'WLK':{
-        'closed_view_ref': 'https://eu1.salesforce.com/home/home.jsp',
-        'closed_view_url': 'https://eu1.salesforce.com/500/x?fcf=00B20000004wphi&rolodexIndex=-1&page=1',
-        'closed_filter_txdata'  : 'action=filter&filterId=00B20000004wphi&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&vf=undefined&isdtp=null',
-        'closed_filter_ref'     : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
-        'closed_filter_url'     : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
-        'all_view_ref'   : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
-        'all_view_url'   : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
-        'all_filter_txdata'     : 'action=filter&filterId=00B20000005XOoX&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
-        'all_filter_ref'        : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
-        'all_filter_url'        : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
-        'open_view_ref'  : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
-        'open_view_url'  : 'https://eu1.salesforce.com/500?fcf=00B20000005XOp6',
-        'open_filter_txdata'     : 'action=filter&filterId=00B20000005XOp6&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
-        'open_filter_ref'        : 'https://eu1.salesforce.com/500?fcf=00B20000005XOp6',
-        'open_filter_url'        : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        'closed': {
+            'ref1'   : 'https://eu1.salesforce.com/home/home.jsp',
+            'url1'   : 'https://eu1.salesforce.com/500/x?fcf=00B20000004wphi&rolodexIndex=-1&page=1',
+            'txdata' : 'action=filter&filterId=00B20000004wphi&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+            'ref2'   : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
+            'url2'   : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        },
+        'all': {
+            'ref1'   : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
+            'url1'   : 'https://eu1.salesforce.com/500?fcf=00B20000004wphi',
+            'txdata' : 'action=filter&filterId=00B20000005XOoX&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+            'ref2'   : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
+            'url2'   : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        },
+        'open': {
+            'ref1'   : 'https://eu1.salesforce.com/500?fcf=00B20000005XOoX',
+            'url1'   : 'https://eu1.salesforce.com/500?fcf=00B20000005XOp6',
+            'txdata' : 'action=filter&filterId=00B20000005XOp6&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+            'ref2'   : 'https://eu1.salesforce.com/500?fcf=00B20000005XOp6',
+            'url2'   : 'https://eu1.salesforce.com/_ui/common/list/ListServlet',
+        },
         'case_ref': 'https://eu1.salesforce.com/500/o',
         'case_url': ['https://eu1.salesforce.com/', '?rowsperlist=100'],
     },
     'RSL' : {
-        'closed_view_ref': 'https://emea.salesforce.com/home/home.jsp',
-        'closed_view_url': 'https://emea.salesforce.com/500?lsi=-1&fcf=00B20000002BA4l',
-        'closed_filter_txdata'  : 'action=filter&filterId=00B20000002BA4l&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&',
-        'closed_filter_ref'     : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
-        'closed_filter_url'     : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
-        'all_view_ref'   : 'https://emea.salesforce.com/500/o',
-        'all_view_url'   : 'https://emea.salesforce.com/500?fcf=00B20000005Dl6N',
-        'all_filter_txdata'     : 'action=filter&filterId=00B20000005Dl6N&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
-        'all_filter_ref'        : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
-        'all_filter_url'        : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
-        'open_view_ref'  : 'https://emea.salesforce.com/500/o',
-        'open_view_url'  : 'https://emea.salesforce.com/500?fcf=00B20000005Dl6N',
-        'open_filter_txdata'     : 'action=filter&filterId=00B20000000nD39&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
-        'open_filter_ref'        : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
-        'open_filter_url'        : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
+        'closed': {
+            'ref1'   : 'https://emea.salesforce.com/home/home.jsp',
+            'url1'   : 'https://emea.salesforce.com/500?lsi=-1&fcf=00B20000002BA4l',
+            'txdata' : 'action=filter&filterId=00B20000002BA4l&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&',
+            'ref2'   : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
+            'url2'   : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
+        },
+        'all': {
+            'ref1'   : 'https://emea.salesforce.com/500/o',
+            'url1'   : 'https://emea.salesforce.com/500?fcf=00B20000005Dl6N',
+            'txdata' : 'action=filter&filterId=00B20000005Dl6N&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+            'ref2'   : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
+            'url2'   : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
+        },
+        'open': {
+            'ref1'   : 'https://emea.salesforce.com/500/o',
+            'url1'   : 'https://emea.salesforce.com/500?fcf=00B20000005Dl6N',
+            'txdata' : 'action=filter&filterId=00B20000000nD39&filterType=t&page=%s&rowsPerPage=%s&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1',
+            'ref2'   : 'https://emea.salesforce.com/500?fcf=00B20000002BA4l',
+            'url2'   : 'https://emea.salesforce.com/_ui/common/list/ListServlet',
+        },
         'case_ref': 'https://emea.salesforce.com/500/o',
         'case_url': ['https://emea.salesforce.com/', '?rowsperlist=100'],
     }
@@ -184,7 +184,7 @@ class CaseCollector:
         ## ..................................................................................... ##
         self.num_records_to_pull = '20'
         ## ..................................................................................... ##
-        # self.page_back = 'all' # takes int ot the default value 'all'
+        self.view = 'all'
         ## ..................................................................................... ##
         self.myweb_module_debug = -1
         ## ..................................................................................... ##
@@ -452,6 +452,8 @@ class CaseCollector:
                 results['shift'] = min(shifts_that_time, key=lambda x: x.date)
             else:
                 results['shift'] = max(shifts_that_time, key=lambda x: x.date)
+        elif len(possible_shift) == 0 and results['created'] < datetime(2010,4,21,tzinfo=timezone.get_default_timezone()):
+            results['shift'] = None
         elif len(possible_shift) == 1:
             results['shift'] = possible_shift[0]
         elif len(possible_shift) == 2:
@@ -460,10 +462,18 @@ class CaseCollector:
             else:
                 results['shift'] = max(possible_shift, key=lambda x: x.date)
         else:
+            print('shifts', shifts_that_time)
+            print('case created date', results['created'])
             for sh in shifts_that_time:
                 print(sh)
+            print()
+            exit(1)
             raise MyError('more than 2 matching shifts for time: ' + str(results['created']))
-        results['creator'] = results['shift'].agent
+        if results['shift']:
+            results['creator'] = results['shift'].agent
+        else:
+            results['creator'] = None
+
         results['reason'] = siphon(html, '<div id="cas6_ileinner">', '</div>')
         return results
 
@@ -502,10 +512,16 @@ class CaseCollector:
         return results
     
     def view_page_table_parse(self, page):
-        maps = CLOSED_VIEW_MAPS[self.account][:]
+        maps = []
+        for m in VIEW_MAPS[self.account]:
+            if self.view in m['use_in']:
+                maps.append(m)
         big_re = maps[0]['re_start']
         for i in range(1, len(maps)):
             big_re += r'(\[.+?\]),' + maps[i]['re_start']
+        self.debug('bigre', big_re)
+        self.debug(page)
+        self.debug(self.account, re.findall(r'"([0-9A-Z\._]+)":\[.+?\]}*,(?=")', page, re.DOTALL))
         mgroups = re.search(big_re, page, re.DOTALL).groups()
         self.debug('found', len(mgroups), 'groups')
         for g in range(len(mgroups)):
@@ -539,8 +555,8 @@ class CaseCollector:
         return records_box
 
     def load_view_pages(self, connection, target_time = None):
-        connection.handle.setref(URLS[self.account]['all_view_ref'])
-        html = connection.sfcall(URLS[self.account]['all_view_url'])
+        connection.handle.setref(URLS[self.account][self.view]['ref1'])
+        html = connection.sfcall(URLS[self.account][self.view]['url1'])
         html = self.clear_bad_chars(html)
         # self.debug_flag = True
         self.debug(html, 'sfbot_dump_' + self.account + '_close_cases_view.txt', destination='file')
@@ -553,10 +569,10 @@ class CaseCollector:
             target_time = datetime(2010,1,1)
         # for page_index in range(1, upto_page):
         while earliest_date > target_time and upto_page > page_index:
-            txdata  = URLS[self.account]['all_filter_txdata'] %(str(page_index), self.num_records_to_pull)
+            txdata  = URLS[self.account][self.view]['txdata'] %(str(page_index), self.num_records_to_pull)
             connection.handle.setdata(txdata)
-            connection.handle.setref(URLS[self.account]['all_filter_ref'])
-            html = connection.sfcall(URLS[self.account]['all_filter_url'])
+            connection.handle.setref(URLS[self.account][self.view]['ref2'])
+            html = connection.sfcall(URLS[self.account][self.view]['url2'])
             html = self.clear_bad_chars(html)
             pages.append(html)
             # self.debug_flag = True
@@ -690,13 +706,14 @@ class CaseCollector:
 
     def reload(self, *dump):
         results = []
-        for sys in SYSTEMS.keys():
-            self.account = sys
-            self.load_web_and_merge(*dump)
-            self.wipe()
-            self.wipe_comments()
-            self.save() # this does save_comments
-            results += [ self.records[k] for k in sorted(self.records.keys()) ]
+        # for sys in SYSTEMS.keys():
+        # self.account = sys
+        self.account = 'WLK'
+        self.load_web_and_merge(*dump)
+        self.wipe()
+        self.wipe_comments()
+        self.save() # this does save_comments
+        results += [ self.records[k] for k in sorted(self.records.keys()) ]
         resource = Resource.objects.get(name = 'cases')
         resource.last_sync = datetime.now()
         resource.save()
@@ -725,8 +742,6 @@ class CaseCollector:
                 p.save()
 
     def sync_comments(self, comments, case):
-        # print(case)
-        # print(comments)
         # pushes to the db, only if the record is not an exact match; used to fill up missing records, whithout touching the old ones.
         #   would fail for matching 'unique' fields -- that needs a special resolve method!
         if len(comments) > 0:
@@ -739,12 +754,18 @@ class CaseCollector:
 
     def save(self):
         if self.records:
+            self.save_pickle()
             for case in self.records.keys():
                 row = dict([ (k, self.records[case][k],) for k in MODEL_ARG_LIST ])
                 self.debug(row)
-                p = Case(**row)
-                p.save()
-                self.save_comments(self.records[case]['comments'], p)
+                if self.records[case]['creator'] == None or self.records[case]['shift'] == None:
+                    print('skipping case', case, 'details', row)
+                    # this are cases prior to 21.Apr.2010, but fall in the list because we apply target_date restriction to pages and not to cases.
+                    ## TODO fix this.
+                else:
+                    p = Case(**row)
+                    p.save()
+                    self.save_comments(self.records[case]['comments'], p)
         
     def sync(self):
         # pushes to the db, only if the record is not an exact match; used to fill up missing records, whithout touching the old ones.
@@ -768,41 +789,6 @@ class CaseCollector:
         sql = "DELETE FROM %s;" % (table_name, )
         cursor.execute(sql)
 
-    ##################################################################################
-    ##################################################################################
-    ##################################################################################
-    ##################################################################################
-
-    def get_caselist(self, account, connection):
-        _pages=[]
-        if account == 'wlk':
-            for page in range(pages_back):
-                # call to POST desired table rows and filter/sorting                                                                                                                                                           retURL=%2F500%3Ffcf%3D00B20000004wphi%26rolodexIndex%3D-1%26page%3D1&isdtp=null
-                # clsoed
-                txdata = 'action=filter&filterId=00B20000004wphi&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&vf=undefined&retURL=%2F500%3Ffcf%3D00B20000004wphi%26rolodexIndex%3D-1%26page%3D1&isdtp=null'
-                # all open
-                txdata = 'action=newfilter&filterId=00B20000005XOp6&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=&rolodexIndex=-1&retURL=%2F500%3Ffcf%3D00B20000004wpi7%26rolodexIndex%3D-1%26page%3D1'
-                connection.handle.setdata(txdata)
-                connection.handle.setref('https://eu1.salesforce.com/500?fcf=00B20000004wphi')
-                udata = connection.sfcall('https://eu1.salesforce.com/_ui/common/list/ListServlet') # list of closed cases
-                _pages.append(udata)
-        elif account == 'st':
-            for page in range(pages_back):
-                # call to POST desired table rows and filter/sorting
-                # view007
-                txdata =    'action=filter&filterId=00B20000005EOlZ&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&retURL=%2F500%3Ffcf%00B20000005EOlZ%26rolodexIndex%3D-1%26page%3D1'
-                # all open
-                txdata = 'action=newfilter&filterId=00B20000000nD39&filterType=t&page='+str(page+1)+'&rowsPerPage='+num_records_to_pull+'&search=&sort=-CASES.CASE_NUMBER&rolodexIndex=-1&retURL=%2F500%3Ffcf%3D00B20000005EOlZ%26rolodexIndex%3D-1%26page%3D1'
-                connection.handle.setdata(txdata)
-                connection.handle.setref('https://emea.salesforce.com/500?fcf=00B20000005EOlZ')
-                udata = connection.sfcall('https://emea.salesforce.com/_ui/common/list/ListServlet')
-                _pages.append(udata)
-        else:
-            debugit('errror - wrong account identifier: ',account)
-
-        # debugit('len st pages:',len(_pages))
-        return _pages
-
 # TODO:
 # make view() return instead of print        DONE
 # >> test via django                         DONE
@@ -813,7 +799,6 @@ class CaseCollector:
 # make load, save & sync use the DB          DONE
 # review the records fields for consistency  DONE
 # implement comments                         DONE
-# add 'open' cases view (and 'all' cases view)
+# add 'all' cases view                       DONE
+# add 'open' cases view           
 # >> full reload test (not much sense to do it before comments are in place...)
-# 
-# 

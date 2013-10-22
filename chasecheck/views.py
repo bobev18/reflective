@@ -8,7 +8,10 @@ def chase(request):
     last_time = time.ctime(os.path.getmtime(chaser.LAST_REUSLTS))
     if request.method == "POST":
         message, full_message, accounts, today, last_wednesday = chaser.main_chase()
-
+        BAD_CHARS = ['\u200b', '\u2122']
+        for bc in BAD_CHARS:
+            message = message.replace(bc,'')
+            full_message = full_message.replace(bc,'')
         column_list = ['id', 'status', 'subject', 'last_comment', 'postpone', 'target_chase']
 
         wlk_total_list = accounts['wlk']['cardlist']
@@ -28,11 +31,14 @@ def chase(request):
         
         # all_posts = request.POST
         if "sendit" in request.POST.keys():
+            # try:
             chaser.mailit(full_message)
+            # except UnicodeEncodeError as e:
+
 
         # result = render(request, 'chase.html', locals())
         result = TemplateResponse(request, 'chase.html', locals())
-        with open(chaser.LAST_REUSLTS,'w') as fff:
+        with open(chaser.LAST_REUSLTS,'w', encoding='utf-8') as fff:
             fff.write(result.rendered_content)
 
     else:
