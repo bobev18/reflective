@@ -705,6 +705,7 @@ class CaseCollector:
         return results
 
     def reload(self, *dump):
+        raise MyError('You\'ll thank me later')
         results = []
         # for sys in SYSTEMS.keys():
         # self.account = sys
@@ -719,9 +720,17 @@ class CaseCollector:
         resource.save()
         return results
 
-    def update(self, target_agent_name = None, target_time = None): # = 
+    def update(self, target_agent_name = None, target_time = None, target_system = None, target_view = None): # = 
         results = []
-        for sys in SYSTEMS.keys():
+        if target_view:
+            self.view = target_view
+        else:
+            self.view = 'all'
+        if target_system:
+            systems = [target_system]
+        else:
+            systems = SYSTEMS.keys()
+        for sys in systems:
             self.account = sys
             self.load_web_and_merge(target_agent_name, target_time)
             self.sync()

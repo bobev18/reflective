@@ -7,5 +7,5 @@ start.bat
 chasecheck/bicrypt.py
 __pycache__/
 *mysqldb.cnf
-django4r.db.sqlite3
+*.sqlite3
 django2wrap/migrations/

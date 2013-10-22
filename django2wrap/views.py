@@ -1,13 +1,17 @@
-import os
+import imp
+import time, os
 from datetime import datetime, timedelta
-from django.conf import settings
-from django.core.mail import send_mail, mail_admins, mail_managers, EmailMessage, EmailMultiAlternatives
 from email.mime.multipart import MIMEBase
+from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
+from django.core.mail import send_mail, mail_admins, mail_managers, EmailMessage, EmailMultiAlternatives
 from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
+# from django.db.models import Max
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
-import imp
+from django.template.response import TemplateResponse
+# from django2wrap.cases import CaseCollector 
+# from . import chase as chaser
 
 #load resources
 resources = Resource.objects.all()
@@ -33,13 +37,8 @@ def escalation_form(request):
             cd = form.cleaned_data
             subject = "escalation case: " + cd['case'] + " priority: " + cd['priority']
             message = settings.ESCALATION_MESSAGE_BODY
-            message = message.replace("*agent*", cd['agent'])
-            message = message.replace("*case*", cd['case'])
-            message = message.replace("*priority*", cd['priority'])
-            message = message.replace("*company*", cd['company'])
-            message = message.replace("*contact*", cd['contact'])
-            message = message.replace("*description*", cd['description'])
-            message = message.replace("*investigated*",cd['investigated'])
+            for key in ['agent', 'case', 'priority', 'company', 'contact', 'description', 'investigated']:
+                message = message.replace('*' + key + '*', cd[key])
             if cd['case'] == "0000":
                 to = ['Iliyan <iliyan@reflectivebg.com>'] #, peter@reflectivebg.com']
             else:
@@ -59,31 +58,11 @@ def license_form(request):
             cd = form.cleaned_data
             subject = "license request case: " + cd['case'] + " priority: " + cd['priority']
             message = settings.LICENSE_MESSAGE_BODY
-            message = message.replace("*agent*", cd['agent'])
-            message = message.replace("*case*", cd['case'])
-            message = message.replace("*priority*", cd['priority'])
-            message = message.replace("*requestor*", cd['requestor'])
-            message = message.replace("*company*", cd['company'])
-            if cd['pather_company']:
-                message = message.replace("*Partner Company*", "<tr><td><label>Client</label></td><td>%s</td></tr>" % cd['pather_company'])
-            else:
-                message = message.replace("*Partner Company*", '')
-            message = message.replace("*contact*", cd['contact'])
-            message = message.replace("*hostid*", cd['hostid'])
-            message = message.replace("*product*", cd['product'])
-            message = message.replace("*licensetype*", cd['license_type'])
-            message = message.replace("*licensetype*", cd['license_type'])
-            if cd['period']:
-                message = message.replace("*period*", "<tr><td><label>Period</label></td><td>%s</td></tr>" % cd['period'])
-            else:
-                message = message.replace("*period*", '')
-            message = message.replace("*licensestatus*", cd['status'])
-            message = message.replace("*licensefunction*", cd['function'])
-            if cd['period']:
-                message = message.replace("*notes*", "<tr><td><label>Notes</label></td><td>%s</td></tr>" % cd['notes'])
-            else:
-                message = message.replace("*notes*", '')
-
+            for key in ['agent', 'case', 'priority', 'requestor', 'company', 'contact', 'hostid', 'product', 'license_type', 'license_status', 'license_function',]:
+                message = message.replace(key, cd[key])
+            for key in ['pather_company', 'period', 'notes',]:
+                message = message.replace(key, "<tr><td><label>"+key.capitalize()+"</label></td><td>%s</td></tr>" % cd[key])
+            message = message.replace("Pather_company", "Client")
             if cd['case'] == "0000":
                 to = ['Iliyan <iliyan@reflectivebg.com>'] #, peter@reflectivebg.com']
             else:
@@ -148,3 +127,78 @@ def sync(request):
     else:
         form = SyncDetailsForm()
     return render(request, 'sync.html', locals())
+
+def chase(request):
+    last_time = Resource.objects.get(name='cases').last_sync
+    if request.method == "POST":
+        # update_debug = CaseCollector.update(target_view = 'open')
+        update_debug = actuator_classes['cases']().update(target_view = 'open')
+        header = ['number', 'status', 'subject', 'postpone', 'target_chase', 'last_comment',]
+        all_open_cases = Case.objects.exclude(status__contains = 'Close')
+        querysets = {
+            'WLK': {
+                'init'     : {'base': None,       'attr': 'exclude', 'params': {'status__contains': 'Close'}, 'results': all_open_cases}, 
+                'total'    : {'base': 'init',     'attr': 'filter',  'params': {'sfdc': 'WLK'},    'results': None}, 
+                'to_chase' : {'base': 'total',    'attr': 'filter',  'params': {'chased': False},  'results': None},
+                'postponed': {'base': 'to_chase', 'attr': 'exclude', 'params': {'postpone': None}, 'results': None},
+            },
+            'RSL': {
+                'init'     : {'base': None,       'attr': 'exclude', 'params': {'status__contains': 'Close'}, 'results': all_open_cases}, 
+                'total'    : {'base': 'init',     'attr': 'filter',  'params': {'sfdc': 'RSL'},    'results': None}, 
+                'to_chase' : {'base': 'total',    'attr': 'filter',  'params': {'chased': False},  'results': None},
+                'postponed': {'base': 'to_chase', 'attr': 'exclude', 'params': {'postpone': None}, 'results': None},
+            },
+        }
+
+        
+        data = [['Parameter', 'WIGHTLINK', 'REFLECTIVE'],]
+        for key in list(querysets['WLK'].keys())[1:]:
+            data.append(['Count of %s Cases' % key.capitalize()])
+            for sfdc in ['WLK', 'RSL']:
+                obj_key_ref = querysets[sfdc][key]['base']
+                print(key,sfdc,obj_key_ref)
+                objects = querysets[sfdc][obj_key_ref]['results']
+                objects = getattr(objects, querysets[sfdc][key]['attr'])(**querysets[sfdc][key]['params'])
+                querysets[sfdc][key]['results'] = objects[:]
+                data[-1].append(len(objects))
+            if key == 'to_chase':
+                data[-1] = [ (z, '#FF0000') for z in data[-1] ]
+
+        # tables = {'Wightlink to Chase': [header,], 'Wightlink Postponed': [header,],'Reflective to Chase': [header,],'Reflective Postponed': [header,]}
+        tables = {'WLK to_chase': [header,], 'WLK postponed': [header,],'RSL to_chase': [header,],'RSL postponed': [header,]}
+        keys = ['WLK to_chase', 'RSL to_chase', 'WLK postponed', 'RSL postponed'] # to preserve order
+        for key in keys:
+            qs = querysets[key.split(' ')[0]][key.split(' ')[1]]['results']
+            print(key, qs)
+            for case in qs:
+                row = [ getattr(case, z) for z in header ]
+                row[-1] = row[-1]()
+                print('\t',key, row)
+                tables[key].append(row)
+        
+        # print(tables)
+
+
+        # data = [
+        #     ['Parameter', 'WIGHTLINK', 'REFLECTIVE'],
+        #     ['States considered as pending to support:', ['New', 'In Progress', 'Responded'], ['New', 'Responded', 'Working on Resolution']],
+        #     ['Open Cases Total Count:', querysets['WLK']['total'], Case.objects.filter(sfdc='RSL').exclude(status__contains='Close')],
+        #     ['Cases to Chase Count:', Case.objects.filter(sfdc='WLK', chased=False).exclude(status__contains='Close'), Case.objects.filter(sfdc='RSL', chased=False).exclude(status__contains='Close')],
+        #     [ (z, '#FF0000') for z in ['Cases to Chase Count:', Case.objects.filter(sfdc='WLK', chased=False).exclude(status__contains='Close'), Case.objects.filter(sfdc='RSL', chased=False).exclude(status__contains='Close')] ],
+        #     ['Cases with "Postponed Chase" Count:', Case.objects.filter(sfdc='WLK').exclude(status__contains='Close', postpone=None), Case.objects.filter(sfdc='RSL').exclude(status__contains='Close', postpone=None)],
+        # ]
+        message = data
+
+
+
+        result = TemplateResponse(request, 'chase.html', locals())
+        # with open(chaser.LAST_REUSLTS,'w', encoding='utf-8') as fff:
+        #     fff.write(result.rendered_content)
+    else:
+        result = render(request, 'chase.html', locals())
+
+    return result
+
+
+def chased(request):
+    pass

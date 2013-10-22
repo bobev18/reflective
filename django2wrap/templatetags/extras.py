@@ -138,7 +138,10 @@ def simple_table(table):
         for row in body:
             html += '<tr>'
             for val in row:
-                html += '<td>' + str(val) + '</td>'
+                if type(val) == tuple:
+                    html += '<td style="background-color:' + val[1]+';">' + str(val[0]) + '</td>'
+                else:
+                    html += '<td>' + str(val) + '</td>'
             html += '</tr>'
         html += '</table>'
         return html
@@ -171,4 +174,33 @@ def schedule_table(table):
         html += '</table>'
         return html
     except template.VariableDoesNotExist:
+        return ''
+
+
+@register.filter   #@register.filter(name='charswap')
+def table(value):
+    "formats as table"
+    try:
+        header, body = listify(value)
+    except TypeError:
+        return ''
+    try:
+        html = '<table id="simpletable"><tr>'
+        if header:
+            for name in header:
+                html += '<th>' + str(name) + '</th>'
+            html += '</tr>'
+        for row in body:
+            html += '<tr>'
+            for val in row:
+                if type(val) == tuple:
+                    html += '<td style="background-color:' + val[1]+';">' + str(val[0]) + '</td>'
+                else:
+                    html += '<td>' + str(val) + '</td>'
+            html += '</tr>'
+        html += '</table>'
+        return html
+    except template.VariableDoesNotExist:
+        return ''
+    except TypeError:
         return ''

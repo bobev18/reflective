@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Max
 import django.utils.timezone as timezone
 
 SFDC_ACCOUNTS = (('WLK', 'Wightlink'), ('RSL', 'Reflective Solutions'),)
@@ -106,6 +107,11 @@ class Case(models.Model):
     def __str__(self):
         return self.number
 
+    def last_comment(self):
+        comments = Comment.objects.filter(case=self)
+        maxdate = comments.aggregate(Max('added'))['added__max']
+        return Comment.objects.get(case=self, added=maxdate).txt()
+
 class Call(models.Model):
     agent = models.ForeignKey(Agent, default=None, null=True) # needed until I include the schedule from before Dec 2012
     shift = models.ForeignKey(Shift, default=None, null=True) # needed until I include the schedule from before Dec 2012
@@ -149,7 +155,14 @@ class Comment(models.Model):
     # raw = models.TextField()
     
     def __str__(self):
-        return self.case + ': ' + str(self.added)
+        return str(self.case) + ': ' + str(self.added)
+
+    def txt(self):
+        if self.byclient:
+            return self.added.strftime("%d/%m/%Y %H:%M") + ' client: '+self.message
+            # return self.client+':'+self.message
+        else:
+            return self.added.strftime("%d/%m/%Y %H:%M") + ' ' + str(self.agent)+': '+self.message
 
 class Resource(models.Model):
     name = models.CharField(max_length=32)

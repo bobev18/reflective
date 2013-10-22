@@ -37,12 +37,12 @@ def chase(request):
 
 
         # result = render(request, 'chase.html', locals())
-        result = TemplateResponse(request, 'chase.html', locals())
+        result = TemplateResponse(request, 'oldchase.html', locals())
         with open(chaser.LAST_REUSLTS,'w', encoding='utf-8') as fff:
             fff.write(result.rendered_content)
 
     else:
-        result = render(request, 'chase.html', locals())
+        result = render(request, 'oldchase.html', locals())
 
     return result
 
