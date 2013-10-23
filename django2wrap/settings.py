@@ -7,7 +7,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 fp = os.path.join(BASE_DIR, 'local_settings.py')
 try:
-    exec(open(fp,'r').read())
+    exec(open(fp,'rt',encoding='utf-8').read())
 except :
     print('!'*32, 'Failed to import', fp)
     print()

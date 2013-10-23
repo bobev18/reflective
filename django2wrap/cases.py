@@ -154,6 +154,8 @@ def p(*args, sep=' ', end='\n' ):
         sys.stdout.buffer.write(sep)
     sys.stdout.buffer.write(end)
 
+safe_print = p
+
 remove_html_tags = lambda data: HTML_CODE_PATTERN.sub('', data)
 
 def siphon(text, begin, end):
@@ -221,7 +223,7 @@ class CaseCollector:
 
     def clear_bad_chars(self, text):
         # KILL BAD UNICODE
-        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', ]
+        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', ]
         for bc in BAD_CHARS:
             text = text.replace(bc, '')
         # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
@@ -558,17 +560,19 @@ class CaseCollector:
         connection.handle.setref(URLS[self.account][self.view]['ref1'])
         html = connection.sfcall(URLS[self.account][self.view]['url1'])
         html = self.clear_bad_chars(html)
-        # self.debug_flag = True
+        self.debug_flag = True
         self.debug(html, 'sfbot_dump_' + self.account + '_close_cases_view.txt', destination='file')
-        # self.debug_flag = False
+        self.debug_flag = False
         pages = []
         page_index = 1
         upto_page = 999
-        earliest_date = datetime.now()
+        earliest_date = timezone.now()
         if not target_time:
-            target_time = datetime(2010,1,1)
+            goal_time = datetime(2010, 1, 1, tzinfo = timezone.get_default_timezone())
+        else:
+            goal_time = target_time
         # for page_index in range(1, upto_page):
-        while earliest_date > target_time and upto_page > page_index:
+        while earliest_date > goal_time and upto_page > page_index:
             txdata  = URLS[self.account][self.view]['txdata'] %(str(page_index), self.num_records_to_pull)
             connection.handle.setdata(txdata)
             connection.handle.setref(URLS[self.account][self.view]['ref2'])
@@ -579,9 +583,10 @@ class CaseCollector:
             self.debug('table view page', page_index, ':', html)
             # self.debug_flag = False
             page_index += 1
-            if target_time == datetime(2010,1,1):
+            if not target_time:
                 upto_page = (int(siphon(html, '"totalRowCount":', ',')) // int(self.num_records_to_pull)) + 1
             earliest_date = datetime.strptime(re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"],".+?":', html)[0], '%d/%m/%Y %H:%M')
+            earliest_date = earliest_date.replace(tzinfo = timezone.get_default_timezone())
         return pages
     
     def load_web_data(self, target_time = None):
@@ -757,13 +762,23 @@ class CaseCollector:
             for comm in comments:
                 # find = Comment.objects.filter(case=case, **comm)
                 find = Comment.objects.filter(case=case, added=comm['added'])
-                if not find:
+                if find:
+                    p = find[0]
+                    for k in comm.keys():
+                        # print('\t', '-'*20, getattr(p, k))
+                        # print('\t', '-'*20, comm[k])
+                        # print('\t', k, 'from', getattr(p, k), 'to', comm[k])
+                        setattr(p, k, comm[k])
+                    p.shift=case.shift
+                    p.case=case
+                    # p.save()
+                else:
                     p = Comment(shift=case.shift, case=case, **comm)
-                    p.save()
+                p.save()
 
     def save(self):
         if self.records:
-            self.save_pickle()
+            # self.save_pickle()
             for case in self.records.keys():
                 row = dict([ (k, self.records[case][k],) for k in MODEL_ARG_LIST ])
                 self.debug(row)
@@ -777,20 +792,28 @@ class CaseCollector:
                     self.save_comments(self.records[case]['comments'], p)
         
     def sync(self):
-        # pushes to the db, only if the record is not an exact match; used to fill up missing records, whithout touching the old ones.
-        #   would fail for matching 'unique' fields -- that needs a special resolve method!
+        # unlike calls, actually updates existing records
         results = []
         if self.records:
             for case in self.records.keys():
                 row = { k: self.records[case][k] for k in MODEL_ARG_LIST }
                 find = Case.objects.filter(number=self.records[case]['number'], sfdc=self.records[case]['sfdc'])
-                if not find:
+                if find:
+                    p = find[0]
+                    for k in MODEL_ARG_LIST:
+                        # safe_print('='*20, getattr(p, k))
+                        # safe_print('='*20, row[k])
+                        # safe_print(k, 'from', getattr(p, k), 'to', row[k])
+                        setattr(p, k, row[k])
+                    p.save()
+                    self.sync_comments(self.records[case]['comments'], p) # sync comments of existing case
+                    # find.save()
+                else:
                     p = Case(**row)
                     p.save()
-                    results.append(p)
-                    self.save_comments(self.records[case]['comments'], p)   # save comments of a new case
-                else:
-                    self.sync_comments(self.records[case]['comments'], find[0]) # sync comments of existing case
+                    self.save_comments(self.records[case]['comments'], p) # sync comments of existing case
+                results.append(p)
+        return results
  
     def wipe(self):
         cursor = connection.cursor()

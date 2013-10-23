@@ -10,22 +10,22 @@
     <body>
     {% load extras %}
     <div id=\"stylized\" class=\"myblock\">
-        <form method="post">
-            {% csrf_token %}
-            <input type="checkbox" name="sendit" value="1" checked="checked">Send Email?<br>
-            <input type="submit" value="Start Chase Checker"><br><br>
-        </form>
-        {% if message %}
+        {% if data %}
             <h1>Chasing Results</h1>
             {{data|table|safe}}
-            {% for key, values in tables.items %}
-                <h2>{{key}}</h2>
-                {{values|table|safe}}
-            {% endfor %}
-            <br>DEBUG:<br>
-            {{update_debug|table|safe}}
+            <br><br>
+            {{table|table|safe}}
+            {% if cases_closed_since_last_chase %}
+                <br><br>
+                {{cases_closed_since_last_chase|table|safe}}
+            {% endif %}
         {% else %}
-            Last run results ({{ last_time }}): <a href="last_chase_ruslts.html">here</a><br>
+            <form method="post">
+                {% csrf_token %}
+                <input type="checkbox" name="sendit" value="1" checked="checked">Send Email?<br>
+                <input type="submit" value="Start Chase Checker"><br><br>
+            </form>
+            Last run results ({{ last_time }}): <a href="/chased/">here</a><br>
         {% endif %}
     </div>
     </body>

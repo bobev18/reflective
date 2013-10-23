@@ -35,6 +35,12 @@ AGENT_COLORS = (
     ('#ffff00', 'yellow'),
 )
 
+class MyError(Exception):
+    def __init__(self, value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
 class Agent(models.Model):
     name = models.CharField(max_length=30)
     start = models.DateField()
@@ -109,8 +115,13 @@ class Case(models.Model):
 
     def last_comment(self):
         comments = Comment.objects.filter(case=self)
-        maxdate = comments.aggregate(Max('added'))['added__max']
-        return Comment.objects.get(case=self, added=maxdate).txt()
+        if len(comments) > 1:
+            maxdate = comments.aggregate(Max('added'))['added__max']
+            return Comment.objects.get(case=self, added=maxdate).txt()
+        elif len(comments) == 1:
+            return comments[0].txt()
+        else:
+            return 'n/a'
 
 class Call(models.Model):
     agent = models.ForeignKey(Agent, default=None, null=True) # needed until I include the schedule from before Dec 2012

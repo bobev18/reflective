@@ -3,40 +3,6 @@ import re
 
 register = template.Library()
 
-# def charswap(value, arg):
-#     "Removes all values of arg from the given string"
-#     # try:
-#     return value.replace(arg[0], arg[1])
-#     # except EX:
-#     #   passcharswap
-
-# register.filter('charswap', charswap)
-
-### equivalent
-
-@register.filter   #@register.filter(name='charswap')
-def charswap(value, arg):
-    "Removes all values of arg from the given string"
-    try:
-        return value.replace(arg[0], arg[1])
-    except:
-        return value
-
-@register.filter
-def _1337(value):
-    try:
-        result = value.replace('l','1')
-        result = result.replace('i','!')
-        result = result.replace('e','3')
-        result = result.replace('a','4')
-        result = result.replace('o','0')
-        result = result.replace('t','7')
-        result = result.replace('s','5')
-        result = result.replace('g','9')
-        return result
-    except:
-        return value
-
 class TableMakerNode(template.Node):
     def __init__(self, var_to_be_presented_as_table, table_params): #later add class name for the table, so it can be CSSed
         self.target = template.Variable(var_to_be_presented_as_table)
@@ -81,19 +47,6 @@ def table_it(parser, token):
     
     return TableMakerNode(variable_name, table_params[1:-1])
 
-@register.tag(name = 'upper')
-def do_upper(parser, token):
-    nodelist = parser.parse(('endupper',))
-    parser.delete_first_token()
-    return UpperNode(nodelist)
-
-class UpperNode(template.Node):
-    def __init__(self, nodelist):
-        self.nodelist = nodelist
-
-    def render(self, context):
-        output = self.nodelist.render(context)
-        return output.upper()
 
 def listify(table):
     header = None
@@ -188,13 +141,16 @@ def table(value):
         html = '<table id="simpletable"><tr>'
         if header:
             for name in header:
-                html += '<th>' + str(name) + '</th>'
+                if type(name) == tuple:
+                    html += '<th ' + name[1] + '>' + str(name[0]) + '</th>'
+                else:
+                    html += '<th>' + str(name) + '</th>'
             html += '</tr>'
         for row in body:
             html += '<tr>'
             for val in row:
                 if type(val) == tuple:
-                    html += '<td style="background-color:' + val[1]+';">' + str(val[0]) + '</td>'
+                    html += '<td ' + val[1] + '>' + str(val[0]) + '</td>'
                 else:
                     html += '<td>' + str(val) + '</td>'
             html += '</tr>'

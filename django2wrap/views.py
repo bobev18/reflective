@@ -1,6 +1,6 @@
-import imp
-import time, os
+import imp, os
 from datetime import datetime, timedelta
+import django.utils.timezone as timezone
 from email.mime.multipart import MIMEBase
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect
@@ -99,19 +99,7 @@ def listen(request, agent = 'Boris', file_name = '+000000_2012.06.15.Fri.17.40.3
     return response
 
 def sync(request):
-    # update - pull specific subset of a resourse, add the new ones, and update old records in db
-    #   update would need more form fields (agent, time period[hour,day,week, month], )
-    # view   - show records from db - may use same subset fields as in "update"
-    # reload - empty db, pull all records from resourse, and save them to db
-    # load   - (basic) pull all records from resourse
-    # wipe   - (basic) empty db
-    # save   - (basic) save the data to db, overwrite existing records
-    # sync   - (basic) save the data to db, skip existing records
-
-    # until I can pass via south the model changes for "Resource", I should use a dict:
-    actions = ['Update', 'View', 'Reload'] #make this Meta -- passing to form and to coresponding method getattr(foo, 'bar')()
-
-
+    actions = ['Update', 'View', 'Reload']
     if request.method == 'POST':
         form = SyncDetailsForm(request.POST)
         if form.is_valid():
@@ -128,77 +116,105 @@ def sync(request):
         form = SyncDetailsForm()
     return render(request, 'sync.html', locals())
 
-def chase(request):
+def chase(request, run_update_before_chase = False):
     last_time = Resource.objects.get(name='cases').last_sync
-    if request.method == "POST":
-        # update_debug = CaseCollector.update(target_view = 'open')
-        update_debug = actuator_classes['cases']().update(target_view = 'open')
-        header = ['number', 'status', 'subject', 'postpone', 'target_chase', 'last_comment',]
+    if request.method == "POST" or not run_update_before_chase:
+        if run_update_before_chase:
+            # update_debug = actuator_classes['cases']().update(target_time = timezone.now() + timedelta(days=-1))
+            update_results = actuator_classes['cases']().update(target_view = 'open')
+        else:
+            update_results = None
+        header = ['number', 'status', 'subject', 'postpone', 'target_chase', 'last_comment', 'link']
         all_open_cases = Case.objects.exclude(status__contains = 'Close')
         querysets = {
             'WLK': {
-                'init'     : {'base': None,       'attr': 'exclude', 'params': {'status__contains': 'Close'}, 'results': all_open_cases}, 
-                'total'    : {'base': 'init',     'attr': 'filter',  'params': {'sfdc': 'WLK'},    'results': None}, 
-                'to_chase' : {'base': 'total',    'attr': 'filter',  'params': {'chased': False},  'results': None},
-                'postponed': {'base': 'to_chase', 'attr': 'exclude', 'params': {'postpone': None}, 'results': None},
+                'init'     : {'base': None,    'attr': 'exclude', 'params': {'status__contains': 'Close'}, 'results': all_open_cases}, 
+                'total'    : {'base': 'init',  'attr': 'filter',  'params': {'sfdc': 'WLK'},    'results': None}, 
+                'to_chase' : {'base': 'total', 'attr': 'filter',  'params': {'chased': False},  'results': None},
+                'postponed': {'base': 'total', 'attr': 'exclude', 'params': {'postpone': None}, 'results': None},
             },
             'RSL': {
-                'init'     : {'base': None,       'attr': 'exclude', 'params': {'status__contains': 'Close'}, 'results': all_open_cases}, 
-                'total'    : {'base': 'init',     'attr': 'filter',  'params': {'sfdc': 'RSL'},    'results': None}, 
-                'to_chase' : {'base': 'total',    'attr': 'filter',  'params': {'chased': False},  'results': None},
-                'postponed': {'base': 'to_chase', 'attr': 'exclude', 'params': {'postpone': None}, 'results': None},
+                'init'     : {'base': None,    'attr': 'exclude', 'params': {'status__contains': 'Close'}, 'results': all_open_cases}, 
+                'total'    : {'base': 'init',  'attr': 'filter',  'params': {'sfdc': 'RSL'},    'results': None}, 
+                'to_chase' : {'base': 'total', 'attr': 'filter',  'params': {'chased': False},  'results': None},
+                'postponed': {'base': 'total', 'attr': 'exclude', 'params': {'postpone': None}, 'results': None},
             },
         }
-
-        
         data = [['Parameter', 'WIGHTLINK', 'REFLECTIVE'],]
         for key in list(querysets['WLK'].keys())[1:]:
             data.append(['Count of %s Cases' % key.capitalize()])
             for sfdc in ['WLK', 'RSL']:
                 obj_key_ref = querysets[sfdc][key]['base']
-                print(key,sfdc,obj_key_ref)
+                # print(key,sfdc,obj_key_ref)
                 objects = querysets[sfdc][obj_key_ref]['results']
                 objects = getattr(objects, querysets[sfdc][key]['attr'])(**querysets[sfdc][key]['params'])
                 querysets[sfdc][key]['results'] = objects[:]
                 data[-1].append(len(objects))
             if key == 'to_chase':
-                data[-1] = [ (z, '#FF0000') for z in data[-1] ]
-
-        # tables = {'Wightlink to Chase': [header,], 'Wightlink Postponed': [header,],'Reflective to Chase': [header,],'Reflective Postponed': [header,]}
-        tables = {'WLK to_chase': [header,], 'WLK postponed': [header,],'RSL to_chase': [header,],'RSL postponed': [header,]}
+                data[-1] = [ (z, 'style="background-color:#FF0000;"') for z in data[-1] ]
+        URLS = {
+            'WLK': '<a href="https://eu1.salesforce.com/%s" target="_blank">%s</a>',
+            'RSL': '<a href="https://emea.salesforce.com/%s" target="_blank">%s</a>',
+        }
+        table = []
+        cases_closed_since_last_chase = []
         keys = ['WLK to_chase', 'RSL to_chase', 'WLK postponed', 'RSL postponed'] # to preserve order
         for key in keys:
+            if key.count('to_chase'):
+                color = '#FF0000'
+            else:
+                color = '#AAAAAA'
+            table.append([('<h2>' + key + '</h2>', 'style="background-color:' + color + ';text-align:center;" colspan="' + str(len(header)) + '"')])
+            table.append([ ('<b>' + z + '</b>', 'style="text-align:center;"') for z in header[:-1] ])
             qs = querysets[key.split(' ')[0]][key.split(' ')[1]]['results']
-            print(key, qs)
             for case in qs:
                 row = [ getattr(case, z) for z in header ]
+                link = row.pop()
+                row[0] = URLS[key.split(' ')[0]] % (link, row[0])
                 row[-1] = row[-1]()
-                print('\t',key, row)
-                tables[key].append(row)
-        
-        # print(tables)
+                if update_results and case.number not in [ z['number'] for z in update_results ]:
+                    cases_closed_since_last_chase.append(row)
+                else:
+                    # tables[key].append(row)
+                    table.append(row)
 
-
-        # data = [
-        #     ['Parameter', 'WIGHTLINK', 'REFLECTIVE'],
-        #     ['States considered as pending to support:', ['New', 'In Progress', 'Responded'], ['New', 'Responded', 'Working on Resolution']],
-        #     ['Open Cases Total Count:', querysets['WLK']['total'], Case.objects.filter(sfdc='RSL').exclude(status__contains='Close')],
-        #     ['Cases to Chase Count:', Case.objects.filter(sfdc='WLK', chased=False).exclude(status__contains='Close'), Case.objects.filter(sfdc='RSL', chased=False).exclude(status__contains='Close')],
-        #     [ (z, '#FF0000') for z in ['Cases to Chase Count:', Case.objects.filter(sfdc='WLK', chased=False).exclude(status__contains='Close'), Case.objects.filter(sfdc='RSL', chased=False).exclude(status__contains='Close')] ],
-        #     ['Cases with "Postponed Chase" Count:', Case.objects.filter(sfdc='WLK').exclude(status__contains='Close', postpone=None), Case.objects.filter(sfdc='RSL').exclude(status__contains='Close', postpone=None)],
-        # ]
-        message = data
-
-
-
-        result = TemplateResponse(request, 'chase.html', locals())
-        # with open(chaser.LAST_REUSLTS,'w', encoding='utf-8') as fff:
-        #     fff.write(result.rendered_content)
+        result = render(request, 'chase.html', {'last_time': last_time, 'data': data, 'table': table, 'cases_closed_since_last_chase': cases_closed_since_last_chase})
+        email_result = render(request, 'chase.html', {'data': data, 'table': table})
+        raw_result = email_result.content.decode('utf-8')
+        if "sendit" in request.POST.keys():
+            mymail = EmailMultiAlternatives("Daily Chase Status " + datetime.now().strftime("%H:%M"), str(data)+'\n'+str(table), settings.CHASE_EMAIL_FROM, settings.CHASE_EMAIL_TO, headers = settings.CHASE_EMAIL_HEADERS)
+            mymail.attach_alternative(raw_result, 'text/html')
+            mymail.send(fail_silently=False)
     else:
-        result = render(request, 'chase.html', locals())
+        result = render(request, 'chase.html', {'last_time': last_time})
 
     return result
 
+# def mailit(message):
+#     import smtplib
+#     from email.mime.multipart import MIMEMultipart
+#     from email.mime.text import MIMEText
+#     from time import localtime, strftime
+#     subject  = "Daily Chase Status " + strftime("%H:%M", localtime())
 
-def chased(request):
-    pass
+#     # inclusion ---------------------------------------------
+#     msg = MIMEMultipart('alternative')
+#     msg['Subject'] = subject
+#     msg['From'] = FROMADDR
+#     msg['To'] = ','.join(TOADDRS)
+
+#     # Create the body of the message (a plain-text and an HTML version).
+#     # text = "this message is not available in plain text"
+#     # part1 = MIMEText(text, 'plain')
+#     part2 = MIMEText(message, 'html', 'utf-8')
+#     # msg.attach(part1)
+#     msg.attach(part2)
+#     # end of inclusion --------------------------------------
+
+#     server = smtplib.SMTP('smtp.gmail.com', 587)
+#     server.set_debuglevel(0)
+#     server.ehlo()
+#     server.starttls()
+#     server.login(LOGIN, PASSWORD)
+#     server.sendmail(FROMADDR, TOADDRS, msg.as_string())
+#     server.quit()
