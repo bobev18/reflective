@@ -1,5 +1,5 @@
 import imp, os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import django.utils.timezone as timezone
 from email.mime.multipart import MIMEBase
 from django.conf import settings
@@ -10,7 +10,7 @@ from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
 # from django.db.models import Max
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
 from django.template.response import TemplateResponse
-# from django2wrap.cases import CaseCollector 
+from django2wrap.weekly_report import WeeklyReport
 # from . import chase as chaser
 
 #load resources
@@ -26,6 +26,15 @@ for res in resources:
 # from django2wrap.calls import PhoneCalls # as phonecalls
 # from django2wrap.shifts import ScheduleShifts 
 # actuator_classes = {'calls': PhoneCalls, 'shifts': ScheduleShifts }
+
+def strdate(dt):
+    tz = timezone.get_current_timezone()
+    if type(dt) == datetime:
+        return timezone.make_naive(dt, tz).strftime("%d/%m/%Y %H:%M")
+    elif type(dt) == date:
+        return timezone.make_naive(dt, tz).strftime("%d/%m/%Y")
+    else:
+        return dt
 
 def homepage(request):
     return HttpResponse('<html><body>Welcome<br><br><a href="/chase/">Chaser</a><br><a href="https://78.142.1.136/mwiki/">Wiki</a><br><a href="/escalation/">Escalation Form</a><br><a href="/license/">License Form</a></body></html>')
@@ -119,13 +128,17 @@ def sync(request):
 def chase(request, run_update_before_chase = False):
     last_time = Resource.objects.get(name='cases').last_sync
     if request.method == "POST" or not run_update_before_chase:
-        if run_update_before_chase:
-            # update_debug = actuator_classes['cases']().update(target_time = timezone.now() + timedelta(days=-1))
-            update_results = actuator_classes['cases']().update(target_view = 'open')
-        else:
-            update_results = None
-        header = ['number', 'status', 'subject', 'postpone', 'target_chase', 'last_comment', 'link']
+        cases_closed_since_last_chase = []
         all_open_cases = Case.objects.exclude(status__contains = 'Close')
+        open_numbers = [ getattr(z, 'number') for z in all_open_cases ]
+        update_results = None
+        if run_update_before_chase:
+            update_results = actuator_classes['cases']().update(target_view = 'open')
+            for num in open_numbers:
+                if num not in [ z['number'] for z in update_results ]:
+                    all_open_cases = all_open_cases.exclude(number=num)
+                    cases_closed_since_last_chase.append(num)
+        header = ['number', 'status', 'subject', 'postpone', 'target_chase', 'last_comment', 'link']
         querysets = {
             'WLK': {
                 'init'     : {'base': None,    'attr': 'exclude', 'params': {'status__contains': 'Close'}, 'results': all_open_cases}, 
@@ -157,7 +170,6 @@ def chase(request, run_update_before_chase = False):
             'RSL': '<a href="https://emea.salesforce.com/%s" target="_blank">%s</a>',
         }
         table = []
-        cases_closed_since_last_chase = []
         keys = ['WLK to_chase', 'RSL to_chase', 'WLK postponed', 'RSL postponed'] # to preserve order
         for key in keys:
             if key.count('to_chase'):
@@ -172,6 +184,7 @@ def chase(request, run_update_before_chase = False):
                 link = row.pop()
                 row[0] = URLS[key.split(' ')[0]] % (link, row[0])
                 row[-1] = row[-1]()
+                row = [ strdate(z) for z in row ]
                 if update_results and case.number not in [ z['number'] for z in update_results ]:
                     cases_closed_since_last_chase.append(row)
                 else:
@@ -190,31 +203,26 @@ def chase(request, run_update_before_chase = False):
 
     return result
 
-# def mailit(message):
-#     import smtplib
-#     from email.mime.multipart import MIMEMultipart
-#     from email.mime.text import MIMEText
-#     from time import localtime, strftime
-#     subject  = "Daily Chase Status " + strftime("%H:%M", localtime())
+def weekly(request, run_update_before_chase = True):
+    last_time = Resource.objects.get(name='cases').last_sync
+    if run_update_before_chase:
+        update_results = actuator_classes['cases']().update(target_time = timezone.now() - timedelta(days=8))
+    else:
+        update_results = None
 
-#     # inclusion ---------------------------------------------
-#     msg = MIMEMultipart('alternative')
-#     msg['Subject'] = subject
-#     msg['From'] = FROMADDR
-#     msg['To'] = ','.join(TOADDRS)
+    report = WeeklyReport()
+    data = report.action()
 
-#     # Create the body of the message (a plain-text and an HTML version).
-#     # text = "this message is not available in plain text"
-#     # part1 = MIMEText(text, 'plain')
-#     part2 = MIMEText(message, 'html', 'utf-8')
-#     # msg.attach(part1)
-#     msg.attach(part2)
-#     # end of inclusion --------------------------------------
+    result = render(request, 'weekly.html', {'data': data})
+    return result
 
-#     server = smtplib.SMTP('smtp.gmail.com', 587)
-#     server.set_debuglevel(0)
-#     server.ehlo()
-#     server.starttls()
-#     server.login(LOGIN, PASSWORD)
-#     server.sendmail(FROMADDR, TOADDRS, msg.as_string())
-#     server.quit()
+def update_case(request, link = None, number = None):
+    if link:
+        case = Case.objects.get(link=link)
+    if number:
+        case = Case.objects.get(number=number)
+    if case:
+        update_results = actuator_classes['cases']().update_one(target = case)
+        return render(request, 'weekly.html', {'data': update_results})
+    else:
+        return HttpResponseRedirect('/')

@@ -114,14 +114,18 @@ class Case(models.Model):
         return self.number
 
     def last_comment(self):
-        comments = Comment.objects.filter(case=self)
-        if len(comments) > 1:
-            maxdate = comments.aggregate(Max('added'))['added__max']
-            return Comment.objects.get(case=self, added=maxdate).txt()
-        elif len(comments) == 1:
+        comments = Comment.objects.filter(case=self).order_by('-added')
+        if len(comments) > 0:
+            # maxdate = comments.aggregate(Max('added'))['added__max']
+            # return Comment.objects.get(case=self, added=maxdate).txt()
+            # return comments[].txt()
+        # elif len(comments) == 1:
             return comments[0].txt()
         else:
             return 'n/a'
+
+    def comments(self):
+        return Comment.objects.filter(case=self).order_by('added')
 
 class Call(models.Model):
     agent = models.ForeignKey(Agent, default=None, null=True) # needed until I include the schedule from before Dec 2012

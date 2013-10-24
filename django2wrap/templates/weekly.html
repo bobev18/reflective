@@ -1,0 +1,19 @@
+<html>
+    <head>
+        <title>Weekly or Case</title>
+    </head>
+    <style>
+        body {font-family: "Lucida Grande", "Lucida Sans Unicode", Verdana, Arial, Helvetica, sans-serif; font-size:18px; }
+        p, h1, form, button { border:0; margin:0; padding:0; }
+        th, td { font-size:14px; border:1px solid black; padding:5px; }
+    </style>
+    <body>
+    {% load extras %}
+    <div id=\"stylized\" class=\"myblock\">
+        {% if data %}
+            <h1>Chasing Results</h1>
+            {{data|table|safe}}
+        {% endif %}
+    </div>
+    </body>
+</html>

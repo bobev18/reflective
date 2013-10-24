@@ -178,7 +178,7 @@ class PhoneCalls:
             else:
                 agent_name = 'n/a'
 
-            call_time = timezone.make_aware(call.date, timezone.get_default_timezone())
+            call_time = timezone.make_naive(call.date, timezone.get_default_timezone())
             play_button = '<a href="/listen/' + str(call.id) + '/" target="_blank">&#9658;</a>'
             return [play_button, agent_name, call_time.strftime("%d/%m/%y %H:%M"), call.case, 'contact', call.filename,] #self.shift.date]
 

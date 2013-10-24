@@ -12,7 +12,11 @@ try:
     dump = os.listdir('/home/bob/Documents/gits/reflective/')
     execution_location = 'Laptop'
 except OSError:
-    execution_location = 'Office'
+    try:
+        dump = os.listdir('D:/temp/')
+        execution_location = 'Office'
+    except OSError:
+        execution_location = 'Bugzilla'
 
 from chasecheck.bicrypt import BiCrypt
 import urllib.request
@@ -32,6 +36,11 @@ LOCATION_PATHS = {
         'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
         'temp_folder'   : 'D:/temp/',
         'pickle_folder' : 'D:/temp/',
+    },
+    'Bugzilla':{
+        'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
+        'temp_folder'   : 'C:/temp/',
+        'pickle_folder' : 'C:/temp/',
     }
 }
 SYSTEMS = {
@@ -589,16 +598,31 @@ class CaseCollector:
             earliest_date = earliest_date.replace(tzinfo = timezone.get_default_timezone())
         return pages
     
-    def load_web_data(self, target_time = None):
+    def open_connection(self, sfdc = None):
+        if not sfdc:
+            sfdc = self.account
         try:
-            os.remove(self.temp_folder + self.account + '_sfcookie.pickle')   # WHY ????
+            os.remove(self.temp_folder + sfdc + '_sfcookie.pickle')   # WHY ????
         except OSError:
             pass
         cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
-        connection = sfuser(cheat[self.account])
+        connection = sfuser(cheat[sfdc])
         connection.setdir(self.temp_folder)
         connection.setdebug(self.myweb_module_debug)
         connection.sflogin()
+        return connection
+
+    def pull_one_case(self, connection, link, sfdc = None):
+        if not sfdc:
+            sfdc = self.account
+        connection.handle.setref(URLS[sfdc]['case_ref'])
+        html = connection.sfcall(link.join(URLS[sfdc]['case_url']))
+        if html.count('Data Not Available'):
+            raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.account, link))
+        return html
+
+    def load_web_data(self, target_time = None):
+        connection = self.open_connection()
         pages = self.load_view_pages(connection, target_time)
         new_records = {}
         for page in pages:
@@ -607,8 +631,9 @@ class CaseCollector:
         if self.show_case_nums_during_execution:
             print('len', len(new_records))
         for k in sorted(new_records.keys()):
-            connection.handle.setref(URLS[self.account]['case_ref'])
-            html = connection.sfcall(URLS[self.account]['case_url'][0] + new_records[k]['link'] + URLS[self.account]['case_url'][1])
+            # connection.handle.setref(URLS[self.account]['case_ref'])
+            # html = connection.sfcall(URLS[self.account]['case_url'][0] + new_records[k]['link'] + URLS[self.account]['case_url'][1])
+            html = self.pull_one_case(connection, new_records[k]['link'])
             html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
             if self.write_raw:
                 new_records[k]['raw'] = html # !!! scary - should zip it
@@ -620,7 +645,7 @@ class CaseCollector:
             new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
             new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
             # ----- PROCESS RESOLUTION TIME IN SF -----
-            if self.account == 'st' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
+            if self.account == 'RSL' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
                 print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
                 new_html = save_resolution_time(connection, new_records[k], hours_str) # the POST should return new html
                 if self.write_raw:
@@ -634,6 +659,32 @@ class CaseCollector:
             self.records[k] = new_records[k] # MERGE
         self.new_len = len(new_records)
         self.end_len = len(self.records) # != new + load because of merge
+
+    def load_one(self, link, sfdc):
+        connection = self.open_connection(sfdc)
+        html = self.pull_one_case(connection, link, sfdc)
+        html = self.clear_bad_chars(html)
+        result = {}
+        raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
+
+        if self.write_raw:
+            result['raw'] = html # !!! scary - should zip it
+        else:
+            result['raw'] = ''
+        result = self.parse_case_details(html, result)
+        result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
+        result['in_support_sla'] = result['support_time'] < result['support_sla']
+        result['in_response_sla'] = result['response_time'] < result['response_sla']
+        result['in_sla'] = result['in_support_sla'] and result['in_response_sla']
+        # ----- PROCESS RESOLUTION TIME IN SF -----
+        if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
+            safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
+            new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
+            if self.write_raw:
+                result['raw'] = new_html
+        # ----- END OF WRITING RESOLUTION TIME IN SF -----
+        connection.handle.close()
+        return result
 
     def calculate_monthly(self):
         for k in self.records.keys():
@@ -725,6 +776,17 @@ class CaseCollector:
         resource.save()
         return results
 
+    def update_one(self, target, sfdc = None):
+        if type(target) == str and target.isdigit():
+            target = Case.objects.get(number=target)
+        # if type(target) == Case:
+            # new_case_data = self.load_one(target.link, target.sfdc)
+        # elif type(target) == str and not target.isdigit():
+        #     new_case_data = self.load_one(target, sfdc)
+        new_case_data = self.load_one(target.link, target.sfdc)
+        self.sync_one(target, new_case_data)
+        return new_case_data
+
     def update(self, target_agent_name = None, target_time = None, target_system = None, target_view = None): # = 
         results = []
         if target_view:
@@ -791,6 +853,12 @@ class CaseCollector:
                     p.save()
                     self.save_comments(self.records[case]['comments'], p)
         
+    def sync_one(self, case, new_data):
+        for k in MODEL_ARG_LIST:
+            setattr(case, k, new_data[k])
+        case.save()
+        self.sync_comments(case['comments'], case) # sync comments of existing case
+
     def sync(self):
         # unlike calls, actually updates existing records
         results = []
