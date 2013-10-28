@@ -59,12 +59,18 @@ def listify(table):
             # [ {name: 'John', phone: '055555555', company: 'Tesco', email: john@tesco.co.uk}, {name: Brian, phone: 888888888, company: Acme, email: brian@acme.biz}]
             header = table[0].keys()
             body = [ z.values() for z in table ]
+        elif isinstance(header, str):
+            body = table
+            header = None
         else:
             raise TypeError(table)
     elif isinstance(table, dict):
         # {name: [John, Brian], phone: [055555555, 888888888], company: [Tesco, Acme], email: [john@tesco.co.uk, brian@acme.biz]}
         header = table.keys()
-        body = table.values()
+        body = list(table.values())
+        for i in range(len(body)):
+            if not isinstance(body[i], list):
+                body[i] = [body[i]]
     elif isinstance(table, str):
         # just lines of text with separator in [',', ';', '|', '\t']
         k = table.find('\n')
@@ -135,6 +141,7 @@ def table(value):
     "formats as table"
     try:
         header, body = listify(value)
+        ('header, body', header, body)
     except TypeError:
         return ''
     try:

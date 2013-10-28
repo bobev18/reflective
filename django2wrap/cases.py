@@ -442,6 +442,17 @@ class CaseCollector:
         return support_time, response_time
 
     def _captute_common_case_details(self, html, results):
+        if 'contact' not in results.keys():
+            results['contact'] = re.findall(r'<a href="(.+?)" .+?>(.+?)</a>', siphon(html, 'Contact Name</td>', '</td>'))[0]
+        if 'subject'  not in results.keys():
+            results['subject'] = remove_html_tags(siphon(html, 'Subject</td>', '</td>'))
+        if 'number'  not in results.keys():
+            results['number'] = remove_html_tags(siphon(html, 'Case Number</td>', '</td>'))
+        if 'status'  not in results.keys():
+            results['status'] = remove_html_tags(siphon(html, 'Status</td>', '</td>'))
+        if 'created'  not in results.keys():
+            results['created'] = remove_html_tags(siphon(html, 'Date/Time Opened</td>', '</td>'))
+            
         results['closed'] = siphon(html,'ClosedDate_ileinner">','</div>')
         if results['closed'] == '&nbsp;':
             results['closed'] = None
@@ -492,9 +503,9 @@ class CaseCollector:
         results['priority'] = re.search(r'Severity ([123])', html).group(1)
         if 'system' not in results.keys():
             results['system'] = siphon(html, '<div id="00N200000023Rfa_ileinner">', '</div>')
-        for sla_key in SLA_MAP[self.account].keys():
+        for sla_key in SLA_MAP['WLK'].keys():
             if results['system'] in sla_key:
-                results['support_sla'] = SLA_MAP[self.account][sla_key][results['priority']]
+                results['support_sla'] = SLA_MAP['WLK'][sla_key][results['priority']]
         if not results['support_sla']:
             raise MyError('Unknown system: %s (Case: %s)' % (new_records['system'], new_records['number']))
         return results
@@ -504,21 +515,25 @@ class CaseCollector:
         results['system'] = siphon(html, '<div id="00N20000000uG6j_ileinner">', '</div>')
         results['problem'] = siphon(html, '<div id="cas5_ileinner">', '</div>')
         results['support_sla'] = -1 # undefined
-        if results['reason'] in SLA_MAP[self.account]['reason'].keys():
-            results['support_sla'] = SLA_MAP[self.account]['reason'][results['reason']] # overwrite by case reason
-        if results['problem'] in SLA_MAP[self.account]['problem'].keys():
-            results['support_sla'] = SLA_MAP[self.account]['problem'][results['problem']] # overwrite by problem
+        if results['reason'] in SLA_MAP['RSL']['reason'].keys():
+            results['support_sla'] = SLA_MAP['RSL']['reason'][results['reason']] # overwrite by case reason
+        if results['problem'] in SLA_MAP['RSL']['problem'].keys():
+            results['support_sla'] = SLA_MAP['RSL']['problem'][results['problem']] # overwrite by problem
         return results
 
-    def parse_case_details(self, html, record):
+    def parse_case_details(self, html, record, sfdc = None):
+        if sfdc:
+            target_sfdc = sfdc
+        else:
+            target_sfdc = self.account
         results = record
         results = self._captute_common_case_details(html, results)
-        if self.account == 'WLK':
+        if target_sfdc == 'WLK':
             results = self._capture_WLK_case_details(html, results)
-        elif self.account == 'RSL':
+        elif target_sfdc == 'RSL':
             results = self._capture_RSL_case_details(html, results)
         else:
-            raise MyError("unknown SFCD self.account :P")
+            raise MyError("unknown SFCD target_sfdc: %s" % target_sfdc)
         results = self._capture_comment_info(html, results)
         return results
     
@@ -664,14 +679,13 @@ class CaseCollector:
         connection = self.open_connection(sfdc)
         html = self.pull_one_case(connection, link, sfdc)
         html = self.clear_bad_chars(html)
-        result = {}
-        raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
-
+        result = {'sfdc': sfdc, 'link': link}
+        # raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
         if self.write_raw:
             result['raw'] = html # !!! scary - should zip it
         else:
             result['raw'] = ''
-        result = self.parse_case_details(html, result)
+        result = self.parse_case_details(html, result, sfdc)
         result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
         result['in_support_sla'] = result['support_time'] < result['support_sla']
         result['in_response_sla'] = result['response_time'] < result['response_sla']
@@ -777,28 +791,28 @@ class CaseCollector:
         return results
 
     def update_one(self, target, sfdc = None):
-        if type(target) == str and target.isdigit():
-            target = Case.objects.get(number=target)
-        # if type(target) == Case:
-            # new_case_data = self.load_one(target.link, target.sfdc)
-        # elif type(target) == str and not target.isdigit():
-        #     new_case_data = self.load_one(target, sfdc)
+        if sfdc and isinstance(target, str) and target.isdigit():
+            target = Case.objects.get(number = target, sfdc = sfdc)
+        elif isinstance(target, Case):
+            pass
+        else:
+            raise MyError('method update_one accepts as arguments string for the case number and string for the sfdc account, or single argument of class Case')
         new_case_data = self.load_one(target.link, target.sfdc)
         self.sync_one(target, new_case_data)
         return new_case_data
 
-    def update(self, target_agent_name = None, target_time = None, target_system = None, target_view = None): # = 
+    def update(self, target_agent_name = None, target_time = None, target_sfdc = None, target_view = None): # = 
         results = []
         if target_view:
             self.view = target_view
         else:
             self.view = 'all'
-        if target_system:
-            systems = [target_system]
+        if target_sfdc:
+            accounts = [target_sfdc]
         else:
-            systems = SYSTEMS.keys()
-        for sys in systems:
-            self.account = sys
+            accounts = SYSTEMS.keys()
+        for acc in accounts:
+            self.account = acc
             self.load_web_and_merge(target_agent_name, target_time)
             self.sync()
             results += [ self.records[k] for k in sorted(self.records.keys()) ]
@@ -857,7 +871,7 @@ class CaseCollector:
         for k in MODEL_ARG_LIST:
             setattr(case, k, new_data[k])
         case.save()
-        self.sync_comments(case['comments'], case) # sync comments of existing case
+        self.sync_comments(new_data['comments'], case) # sync comments of existing case
 
     def sync(self):
         # unlike calls, actually updates existing records

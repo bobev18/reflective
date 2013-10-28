@@ -129,15 +129,16 @@ def chase(request, run_update_before_chase = False):
     last_time = Resource.objects.get(name='cases').last_sync
     if request.method == "POST" or not run_update_before_chase:
         cases_closed_since_last_chase = []
-        all_open_cases = Case.objects.exclude(status__contains = 'Close')
-        open_numbers = [ getattr(z, 'number') for z in all_open_cases ]
+        all_open_cases = Case.objects.exclude(status__contains = 'Close') #db
+        open_numbers = [ (getattr(z, 'number'), getattr(z, 'sfdc')) for z in all_open_cases ]
         update_results = None
         if run_update_before_chase:
-            update_results = actuator_classes['cases']().update(target_view = 'open')
-            for num in open_numbers:
-                if num not in [ z['number'] for z in update_results ]:
-                    all_open_cases = all_open_cases.exclude(number=num)
-                    cases_closed_since_last_chase.append(num)
+            update_results = actuator_classes['cases']().update(target_view = 'open') #web
+            for num_sfdc in open_numbers: #db
+                if num_sfdc not in [ (z['number'], z['sfdc']) for z in update_results ]: #db not in web
+                    all_open_cases = all_open_cases.exclude(number = num_sfdc[0], sfdc = num_sfdc[1]) #db adjusted
+                    cases_closed_since_last_chase.append(num_sfdc)
+
         header = ['number', 'status', 'subject', 'postpone', 'target_chase', 'last_comment', 'link']
         querysets = {
             'WLK': {
@@ -186,10 +187,14 @@ def chase(request, run_update_before_chase = False):
                 row[-1] = row[-1]()
                 row = [ strdate(z) for z in row ]
                 if update_results and case.number not in [ z['number'] for z in update_results ]:
-                    cases_closed_since_last_chase.append(row)
+                    pass
+                    # cases_closed_since_last_chase.append(row)
                 else:
                     # tables[key].append(row)
                     table.append(row)
+
+        for num, sfdc in cases_closed_since_last_chase:
+            actuator_classes['cases']().update_one(target = num, sfdc = sfdc)
 
         result = render(request, 'chase.html', {'last_time': last_time, 'data': data, 'table': table, 'cases_closed_since_last_chase': cases_closed_since_last_chase})
         email_result = render(request, 'chase.html', {'data': data, 'table': table})
@@ -213,16 +218,43 @@ def weekly(request, run_update_before_chase = True):
     report = WeeklyReport()
     data = report.action()
 
-    result = render(request, 'weekly.html', {'data': data})
+    result = render(request, 'weekly.html', {'title': 'Weekly Report', 'data': data})
     return result
 
-def update_case(request, link = None, number = None):
+def update_case(request, link = None, number = None, sfdc = None):
     if link:
-        case = Case.objects.get(link=link)
+        cases = Case.objects.get(link=link)
     if number:
-        case = Case.objects.get(number=number)
+        if len(number) < 8:
+            number = number.rjust(8,'0')
+        cases = Case.objects.filter(number=number)
+
+    if len(cases) == 1:
+        case = cases[0]
+    elif len(cases) > 1:
+        if not sfdc:
+            links = ''
+            for case in cases:
+                links += '<a href="' + request.path + case.sfdc + '">' + case.sfdc + '</a><br>'
+            return HttpResponse('<html><body>Select SFDC<br><br>' + links + '</body></html>')
+        else:
+            case = cases.get(sfdc = sfdc)
+    else:
+        return HttpResponse('<html><body>No matching cases with number</body></html>')
+
     if case:
+        data = [['name', 'old', 'new']]
+        MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'raw', 'postpone', 'target_chase', 'chased' ]
+        for item in MODEL_ARG_LIST:
+            data.append([item, getattr(case, item)])
         update_results = actuator_classes['cases']().update_one(target = case)
-        return render(request, 'weekly.html', {'data': update_results})
+        for i in range(len(MODEL_ARG_LIST)):
+            data[i+1].append(update_results[MODEL_ARG_LIST[i]])
+            if isinstance(data[i+1][-1],tuple):
+                data[i+1][-1]=str(data[i+1][-1])
+            if data[i+1][-1] != data[i+1][-2]:
+                data[i+1][-1] = (data[i+1][-1], 'style="background-color:#FF0000;"')
+        return render(request, 'weekly.html', {'title': 'Case Update', 'data': data})
     else:
         return HttpResponseRedirect('/')
+

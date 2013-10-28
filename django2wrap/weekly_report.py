@@ -72,7 +72,7 @@ class WeeklyReport:
     def __init__(self):
 
         # self.header = ['num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case # to user', 'user confirmation obtained', 'post 3rd party SLA escalation', 'If Local PC, use GTM to view directly', 'escalation for no solution conf', ]
-        self.header = ['postponed', 'num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case num to user', 'user confirmation obtained', 'GTM or RDC used', 'case morphing', 'license SOP', 'escalation SOP', 'support file SOP', 'get ETA SOP', 'high chase', 'bug num', 'bug planned', 'escalation after confirmation chase x3', ]
+        self.header = ['postponed', 'num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case num to user', 'user confirmation obtained', 'GTM or RDC used', 'case morphing', 'license SOP', 'support file SOP', 'escalation SOP', 'get ETA SOP', 'high chase', 'bug num', 'bug planned', 'escalation after confirmation chase x3', ]
 
         self.mapper = {
             'postponed'                              : {'attr': ['postpone']},
@@ -115,6 +115,7 @@ class WeeklyReport:
 
     def _common(self, case):
         ignores = ['Suspended messages in -65 minutes', 'WARNING: only', 'pass reset', 'password reset', 'Request Error count', 'WARNING: No Bookings receved',]
+        # 'user locked '
         return any([case.subject.lower().count(z.lower()) for z in ignores])
 
     def action(self):
@@ -180,6 +181,11 @@ class WeeklyReport:
         return result
 
     def _resolution_not_documented(self, case, comments, *args):
+        commons = [
+            [r'restarted( the)* (Nice.*Label|NPS|NL)( service)*'],  # try against the entire corpus see how many we got; (measure against count'NL' ?)
+            ['license request'], 
+        ]
+
         return 'n/a'
 
     def _wrong_resolution(self, case, comments, *args):
@@ -248,22 +254,53 @@ class WeeklyReport:
     def _user_confirmation_obtained(self, case, comments, *args):
         APPROVALS = {
             'client': [['close the case'], ],
-            'agent' : [['called','everything is back online'], []]
+            'agent' : [
+                ['called','everything is back online'],
+                ['Ferry+ is performing nice and smooth'],
+                ['This solved the problem'],
+                [r'problem( is)* solved'],
+                ['called', 'TO', 'no issues'],
+                ['called', 'TO', 'all fine'],
+                # ['called', '*any client here*', str(['all fine', r'everything is back (online|to normal)', r'no( more)* issues', ''])], # this is just for anotation of futute design
+                ['all seems fine'],
+                [r'there(\'| i)s no errors*'],
+                [r'there(\'| a)re no errors*'],
+                [r'confirmed( that)*', ' is fine'],
+                [r'(is )*work(s|ing) (fine|again)'],
+                [r'(better|ok|works) now'],
+                [r'logged in successfully'],
+                [r'managed to', 'successfully'],
+                [r'agreed( that)*( the)* case can be closed'],
+                [r'agreed( to)*', r'close the case'],
+                #The printing is fine for the whole office.
+            ]
         }
+
+        print(case.number, case.status)
         if not case.status.count('Closed'):
             result = 'n/a'
         elif case.status.count('First Call'):
             result = '1st call'
         else:
+            print('='*10, case.number, '='*10)
             # if case.number == '00010540':
             # print('\tlen comments for', case.number, len(comments))
             if len(comments) > 0:
                 comment = comments.order_by('-added')[0]
                 conf_message = comment.message
+                safe_print('latest comment', conf_message)
                 if comment.byclient: # approval in comment or inline copy of client's email
-                    close_conf = any([ len(re.findall(r'.+?'.join(z), conf_message, re.I)) for z in APPROVALS['client'] ])
+                    close_conf = any([ len(re.findall(r'[^\w]+?'.join(z), conf_message, re.I)) for z in APPROVALS['client'] ])
                 else: # phone approval
-                    close_conf = any([ len(re.findall(r'.+?'.join(z), conf_message, re.I)) for z in APPROVALS['agent'] ])
+                    all_tests = []
+                    for test in APPROVALS['agent']:
+                        test_exp = r'[^\w]+?'.join(test)
+                        test_result = re.findall(test_exp, conf_message, re.I)
+                        if len(test_result) > 0:
+                            safe_print(test_exp)
+                            safe_print('\t',test_result)
+                        all_tests.append(len(test_result))
+                    close_conf = any(all_tests)
 
                 if close_conf:                
                     result = 'done'
@@ -275,11 +312,20 @@ class WeeklyReport:
 
     def _GTM_or_RDC_used(self, case, comments, *args):
         # words = re.findall(r'\w*', '\n'.join([z.message for z in comments]))
-        GRM_mention = any([ len(re.findall(r'[^\w]'+z+r'[^\w]', '\n'.join([comm.message for comm in comments]), re.I)) for z in ['GTM', 'Go To Meeting', 'GoToMeeting'] ])
-        RDC_mention = any([ len(re.findall(r'[^\w]'+z+r'[^\w]', '\n'.join([comm.message for comm in comments]), re.I)) for z in ['RDC', 'Remote Session', 'Remote Desktop'] ])
-        is_used = GRM_mention or RDC_mention
-        should_be_used = False
-        return 'done'*(should_be_used and is_used) + 'n/a'*(not should_be_used) + 'fail'*(should_be_used and not is_used)
+        big_text = '\n'.join([comm.message for comm in comments])
+        # GRM_mention = any([ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'GTM', r'Go To Meeting', r'GoToMeeting'] ])
+        # RDC_mention = any([ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'RDC', r'Remote Session', r'Remote Desktop'] ])
+
+        GTM_mention = [ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'GTM', r'Go To Meeting', r'GoToMeeting'] ]
+        RDC_mention = [ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'RDC', r'Remote Session', r'Remote Desktop'] ]
+        # print(case.number, 'GTM len findall per keywords', GTM_mention)
+        # print(case.number, 'RDC len findall per keywords', RDC_mention)
+        GTM_mention = any(GTM_mention)
+        RDC_mention = any(RDC_mention)
+        is_used = GTM_mention or RDC_mention
+        # should_be_used = False
+        # return 'done'*(should_be_used and is_used) + 'n/a'*(not should_be_used) + 'fail'*(should_be_used and not is_used)
+        return 'done'*(is_used) + 'fail'*(not is_used)
 
     def _case_morphing(self, case, comments, *args):
         return ''
@@ -307,7 +353,9 @@ class WeeklyReport:
         return 'n/a'
 
     def _bug_num(self, case, comments, *args):
-        bugs = ', '.join(re.findall(r'[^\w]bug.{0,2}(\d{2,5})[^\w]', '\n'.join([comm.message for comm in comments]), re.I))
+        bugs = re.findall(r'[^\w]bug[^\d]{0,2}(\d+)[^\d]', case.subject, re.I)
+        bugs += re.findall(r'[^\w]bug[^\d]{0,2}(\d+)[^\d]', '\n'.join([comm.message for comm in comments]), re.I)
+        bugs = ', '.join(bugs)
         return bugs
     
     def _bug_planned(self, case, comments, *args):

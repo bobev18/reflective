@@ -1,6 +1,6 @@
 <html>
     <head>
-        <title>Weekly or Case</title>
+        <title>{{title}}</title>
     </head>
     <style>
         body {font-family: "Lucida Grande", "Lucida Sans Unicode", Verdana, Arial, Helvetica, sans-serif; font-size:18px; }
@@ -11,7 +11,7 @@
     {% load extras %}
     <div id=\"stylized\" class=\"myblock\">
         {% if data %}
-            <h1>Chasing Results</h1>
+            <h1>{{title}} Results</h1>
             {{data|table|safe}}
         {% endif %}
     </div>
