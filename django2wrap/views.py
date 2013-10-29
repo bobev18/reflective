@@ -1,4 +1,5 @@
 import imp, os
+from calendar import monthrange
 from datetime import datetime, timedelta, date
 import django.utils.timezone as timezone
 from email.mime.multipart import MIMEBase
@@ -11,6 +12,8 @@ from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
 from django.template.response import TemplateResponse
 from django2wrap.weekly_report import WeeklyReport
+from django2wrap.cases import CaseCollector, MODEL_ARG_LIST, SUPPORT_STATUSES, SLA_RESPONSE
+case_collector = CaseCollector()
 # from . import chase as chaser
 
 #load resources
@@ -133,7 +136,7 @@ def chase(request, run_update_before_chase = False):
         open_numbers = [ (getattr(z, 'number'), getattr(z, 'sfdc')) for z in all_open_cases ]
         update_results = None
         if run_update_before_chase:
-            update_results = actuator_classes['cases']().update(target_view = 'open') #web
+            update_results = case_collector.update(target_view = 'open') #web
             for num_sfdc in open_numbers: #db
                 if num_sfdc not in [ (z['number'], z['sfdc']) for z in update_results ]: #db not in web
                     all_open_cases = all_open_cases.exclude(number = num_sfdc[0], sfdc = num_sfdc[1]) #db adjusted
@@ -194,7 +197,7 @@ def chase(request, run_update_before_chase = False):
                     table.append(row)
 
         for num, sfdc in cases_closed_since_last_chase:
-            actuator_classes['cases']().update_one(target = num, sfdc = sfdc)
+            case_collector.update_one(target = num, sfdc = sfdc)
 
         result = render(request, 'chase.html', {'last_time': last_time, 'data': data, 'table': table, 'cases_closed_since_last_chase': cases_closed_since_last_chase})
         email_result = render(request, 'chase.html', {'data': data, 'table': table})
@@ -209,16 +212,16 @@ def chase(request, run_update_before_chase = False):
     return result
 
 def weekly(request, run_update_before_chase = True):
-    last_time = Resource.objects.get(name='cases').last_sync
+    # last_time = Resource.objects.get(name='cases').last_sync
     if run_update_before_chase:
-        update_results = actuator_classes['cases']().update(target_time = timezone.now() - timedelta(days=8))
+        update_results = case_collector.update(target_time = timezone.now() - timedelta(days=8))
     else:
         update_results = None
 
     report = WeeklyReport()
     data = report.action()
 
-    result = render(request, 'weekly.html', {'title': 'Weekly Report', 'data': data})
+    result = render(request, 'results.html', {'title': 'Weekly Report', 'data': data})
     return result
 
 def update_case(request, link = None, number = None, sfdc = None):
@@ -240,21 +243,126 @@ def update_case(request, link = None, number = None, sfdc = None):
         else:
             case = cases.get(sfdc = sfdc)
     else:
-        return HttpResponse('<html><body>No matching cases with number</body></html>')
+        # return HttpResponse('<html><body>No matching cases with number</body></html>')
+        case = None
+
+    data = [['name', 'old', 'new']]
+    # MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'raw', 'postpone', 'target_chase', 'chased' ]
 
     if case:
-        data = [['name', 'old', 'new']]
-        MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'raw', 'postpone', 'target_chase', 'chased' ]
         for item in MODEL_ARG_LIST:
             data.append([item, getattr(case, item)])
-        update_results = actuator_classes['cases']().update_one(target = case)
-        for i in range(len(MODEL_ARG_LIST)):
-            data[i+1].append(update_results[MODEL_ARG_LIST[i]])
-            if isinstance(data[i+1][-1],tuple):
-                data[i+1][-1]=str(data[i+1][-1])
-            if data[i+1][-1] != data[i+1][-2]:
-                data[i+1][-1] = (data[i+1][-1], 'style="background-color:#FF0000;"')
-        return render(request, 'weekly.html', {'title': 'Case Update', 'data': data})
+        update_results = case_collector.update_one(target = case)
+    else:
+        for item in MODEL_ARG_LIST:
+            data.append([item, 'n/a'])
+        results = case_collector.update(target_time = timezone.now().replace(hour = 0, minute = 0, second = 0, microsecond = 0), target_view = 'all') # returns list of dicts
+        update_results = [ z for z in results if z['number'] == number]
+        if len(update_results) > 0:
+            update_results = update_results[0]
+        else:
+            return HttpResponse('<html><body>No matching cases with number %s</body></html>' % number)
+
+        # return HttpResponseRedirect('/')
+    for i in range(1,len(MODEL_ARG_LIST) + 1):
+        data[i].append(update_results[MODEL_ARG_LIST[i-1]])
+        if isinstance(data[i][-1],tuple): # clears tuoples of contact links, which get interpreting as style for the field
+            data[i][-1] = str(data[i][-1])
+        if data[i][-1] != data[i][-2]: # add style if field has changed
+            data[i][-1] = (data[i][-1], 'style="background-color:#FF0000;"')
+
+    return render(request, 'results.html', {'title': 'Case Update', 'data': data})
+
+def kpi(request, run_update_before_chase = False):
+    if run_update_before_chase:
+        update_results = case_collector.update(target_time = timezone.now() - timedelta(days=31))
+    else:
+        update_results = None
+
+    report = WeeklyReport()
+    data = report.action()
+
+    result = render(request, 'results.html', {'title': 'Weekly Report', 'data': data})
+    return result
+
+def monthly(request, sfdc, target_month = None, run_update_before_chase = False):
+
+    def calculate_monthly(records):
+        for k in range(len(records)):
+            syslabox[records[k].system]['count']        += 1
+            syslabox[records[k].system]['out_sup_sla']  += not records[k].in_support_sla
+            syslabox[records[k].system]['out_resp_sla'] += not records[k].in_response_sla
+            syslabox[records[k].system]['combined']     += not (records[k].in_response_sla and records[k].in_support_sla)
+        for sla_type in ['out_sup_sla', 'out_resp_sla', 'combined']:
+            syslabox['total'][sla_type] = sum([ syslabox[z][sla_type] for z in SYSTEMS[sfdc] ])
+
+    if not target_month or not isinstance(target_month, datetime):
+        target_month = datetime(timezone.now().year, timezone.now().month - 1, 1, 0, 0, 0)
+    elif isinstance(target_month, str):
+        target_month_str = target_month
+        target_month = datetime.strptime('1' + target_month, '%d/%m/%Y')
     else:
         return HttpResponseRedirect('/')
+    if run_update_before_chase:
+        update_results = case_collector.update(target_time = target_month, target_sfdc = sfdc)
+    else:
+        update_results = None
 
+    OUT_SLA_VIEW_DETAILS = {
+        'WLK': ['system', 'priority'],
+        'RSL' : ['reason', 'problem']
+    }
+    SYSTEMS = {
+        'WLK': ['Ferry+', 'CDI', 'Email', 'Local PC', 'Sentinel', 'DRS', 'Intranet', 'Document Management', 'Blackberry Server', 'CRM', 'Profit Optimisation (RTS)', 'Wide Area Network', 'Great Plains', 'RPO', 'Sailing Statistics (AIS)', 'NiceLabel'],
+        'RSL' : ['StressTester', 'Sentinel', 'Load Monitor']
+    }
+
+    syslabox = {
+        'total': {'count': 0, 'out_sup_sla': 0, 'out_resp_sla':0, 'combined':0},
+        'WLK'  : {'count': 0, 'out_sup_sla': 0, 'out_resp_sla':0, 'combined':0},
+        'RSL'  : {'count': 0, 'out_sup_sla': 0, 'out_resp_sla':0, 'combined':0},
+    }
+    for sys in SYSTEMS[sfdc]:
+        syslabox[sys] = {'count': 0, 'out_sup_sla': 0, 'out_resp_sla':0, 'combined':0}
+    fields = ['in_support_sla', 'number', 'subject', 'in_response_sla', 'number', 'subject', 'response_time', 'number', 'subject', 'support_sla', 'support_time', 'system', 'priority']
+    target_month_str = target_month.strftime('/%m/%Y')
+    end_of_month = target_month + timedelta(days = monthrange(target_month.year, target_month.month)[1])
+    records = Case.objects.filter(closed__range = (target_month, end_of_month), sfdc = sfdc)
+    records = sorted(records, key = lambda x: x.number)
+    calculate_monthly(records) #generates the stats
+    mo_len = len(records)
+    results = ''
+    results += "SFDC account: " + sfdc + '\n'
+    results += 'Target: all cases closed in:' + target_month_str + '\n'
+    results += 'Records count:' + str(mo_len) + '\n'
+    results += '-------------------------------' + '\n'
+    results += "States considered as pending to support: " + str(SUPPORT_STATUSES[sfdc]) + '\n'
+    for rec in records:
+        card = { k:getattr(rec,k) for k in fields if k != 'in_sla'}
+        if card['in_support_sla'] and card['in_response_sla'] :
+            results += 'Case: %s\t%s' % (card['number'], card['subject']) + '\n'
+        elif not card['in_response_sla']:
+            results += 'Case: %s\t%s' %(card['number'], card['subject']) + '\n'
+            results+= 'System: %s\tPriority: %s\tTarget Response: %.2fh\tActual: %.2fh' %(
+                card[OUT_SLA_VIEW_DETAILS[sfdc][0]], card[OUT_SLA_VIEW_DETAILS[sfdc][1]],
+                SLA_RESPONSE[sfdc], card['response_time'])
+            results+= '\n'
+        else:
+            results += 'Case: %s\t%s' %(card['number'], card['subject']) + '\n'
+            results+= 'System: %s\tPriority: %s\tTarget Response: %.2fh\tActual: %.2fh' %(
+                card[OUT_SLA_VIEW_DETAILS[sfdc][0]], card[OUT_SLA_VIEW_DETAILS[sfdc][1]],
+                card['support_sla'], card['support_time'])
+            results+= '\n'
+    results += '-------------------------------' + '\n'
+    results += 'Cases closed in' + target_month_str + ':' + str(mo_len) + '\n'
+    if mo_len > 0:
+        results += "Out of support SLA count :" + str(syslabox['total']['out_sup_sla'])  + ", which is" + str(100.00*(syslabox['total']['out_sup_sla']/mo_len)) + "%"
+        results += "Out of response SLA count:" + str(syslabox['total']['out_resp_sla']) + ", which is" + str(100.00*(syslabox['total']['out_resp_sla']/mo_len)) + "%"
+        results += "Combined Out of SLA      :" + str(100.00*(syslabox['total']['combined']/mo_len)) + "%" + '\n'
+    results += '-------------------------------' + '\n'
+    results += "Count OUT_resp OUT_supp  --- system" + '\n'
+    for sys in SYSTEMS[sfdc]:
+        results += str(syslabox[sys]['count']) + '\t' + str(syslabox[sys]['out_resp_sla']) + '\t' + str(syslabox[sys]['out_sup_sla']) + '\t' + 'for system' + '\t' + sys + '\n'
+    
+    print(results)
+    return render(request, 'results.html', {'title': 'Monthly Report', 'data': results})

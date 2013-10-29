@@ -113,22 +113,38 @@ class ScheduleShifts:
         else:
             return False
 
+    # def sync(self):
+    #     # pushes to the db, only if teh record is not an exact match; used to fill up missing records, whithout touching the old ones.
+    #     #   would fail for matching 'unique' fields -- that needs a special resolve method!
+    #     results = []
+    #     # kwstr = lambda **kwarg: str(kwarg)
+    #     if self.data:
+    #         for shift in self.data:
+    #             # find = Shift.objects.filter(**shift)
+    #             find = Shift.objects.filter(date=shift['date'])
+    #             if not find:
+    #                 p = Shift(**shift)
+    #                 p.save()
+    #                 results.append(p.items())
+    #         return True
+    #     else:
+    #         return False
+
     def sync(self):
-        # pushes to the db, only if teh record is not an exact match; used to fill up missing records, whithout touching the old ones.
-        #   would fail for matching 'unique' fields -- that needs a special resolve method!
+        # unlike calls, actually updates existing records
         results = []
-        # kwstr = lambda **kwarg: str(kwarg)
         if self.data:
             for shift in self.data:
-                # find = Shift.objects.filter(**shift)
-                find = Shift.objects.filter(date=shift['date'])
-                if not find:
-                    p = Shift(**shift)
-                    p.save()
-                    results.append(p.items())
-            return True
-        else:
-            return False
+                record = Shift.objects.get(date = shift['date']) #, tipe=shift['tipe'])
+                if record:
+                    for k in shift.keys():
+                        setattr(record, k, shift[k])
+                else:
+                    record = Shift(**shift)
+                record.save()
+                results.append(record)
+        return results
+
 
     def wipe(self):
         cursor = connection.cursor()
