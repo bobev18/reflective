@@ -482,7 +482,6 @@ class CaseCollector:
             clean_data = re.sub(r'(?<!([\[,]))"(?![,\]])', r'\\"', mgroups[g].replace('"["','"[ "')) #replace is just for 1742
             data_box = eval(clean_data)
             self.debug('result for section', maps[g], len(data_box), data_box[:5])
-            # print('result for section', maps[g], len(data_box), data_box[:5])
             if maps[g]['inner_index']:
                 maps[g]['result'] = [ z[maps[g]['inner_index']] for z in data_box ]
             elif 'additional_re' in maps[g].keys():
@@ -576,7 +575,7 @@ class CaseCollector:
         records = {}
         for k in sorted(new_records.keys()):
             new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=timezone.get_default_timezone())
-            if new_records[k]['created'] > target_time:
+            if not target_time or new_records[k]['created'] > target_time:
                 html = self.pull_one_case(connection, new_records[k]['link'])
                 html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
                 if self.write_raw:

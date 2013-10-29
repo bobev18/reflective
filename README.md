@@ -28,6 +28,7 @@ python manage.py migrate django2wrap
 
 to be able to access virtualenvwrapper:
   source ~/.bash_profile
+          source ~/.profile
   workon dj4
 (http://virtualenvwrapper.readthedocs.org/en/latest/command_ref.html)
 
@@ -55,11 +56,49 @@ TODOS:
 
 
 
-DEPENDANCY:
+DEPENDENCIES:
 
-	shifts uses gspread
-	models use pytz (https://pypi.python.org/pypi/pytz/)
+files prvented from sync via .gitingnore
+  reflective/django4r.db.sqlite3
+  reflective/mysqldb.cnf
+  reflective/chasecheck/bicrypt.py
+  reflective/django2wrap/local_settings.py
+
+packages
+  virtualenv
+  (setuptools, pip -- either came with python3.3, or got installed along virtualenv)
+  six (I think it came along python3.3)
+  Django 1.6c1
+  django-extensions
+  South
+  gspread
+  pytz (https://pypi.python.org/pypi/pytz/)
+
   ?? MySQL connector for py3 from https://github.com/PyMySQL/PyMySQL (had to install manually, as pip install failed)
+
+pip list on Office PC on 29.oct.2013
+  virtualenv (1.10.1)
+  setuptools (0.9.8)
+  pip (1.4)
+  six (1.3.0)
+  Django (1.6b4)
+  django-extensions (1.2.0)
+  South (0.8.1)
+  gspread (0.1.0)
+  pytz (2013.7)
+  
+  # downwards are packs that were tried, but did not end up being utilized
+  elementtree (1.3a3-20070912-preview)
+  gdata (2.0.13)
+  MySQL-Connector-Python (1.1.1a1)
+  pymysql (0.5)
+  wsgiref (0.1.2)
+
+  # downwards are packs from the deployment on the 'bugzilla' machine
+  django-registration (1.0)
+  stevedore (0.11)
+  virtualenv-clone (0.2.4)
+  wsgiref (0.1.2)
 
 	
 DB issues working on SQLite3:

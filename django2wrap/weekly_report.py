@@ -104,11 +104,8 @@ class WeeklyReport:
         }
         run_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
         week_back_date = run_date - timedelta(days=7)
-        print('range', run_date, week_back_date)
         self.closed_workset = Case.objects.filter(closed__range = (week_back_date, run_date), status__contains = 'Close').order_by('sfdc', 'number')
-        print('closed workset len', len(self.closed_workset))
         self.open_workset = Case.objects.exclude(status__contains = 'Close').order_by('sfdc', 'number')
-        print('open workset len', len(self.open_workset))
         self.tz = timezone.get_current_timezone()
         self.run_date = timezone.make_naive(run_date, self.tz).strftime("%d.%m.%Y")
         self.temp_folder = LOCATION_PATHS[execution_location]['temp_folder']
@@ -199,12 +196,9 @@ class WeeklyReport:
 
     def _feedback_to_user_within_1h(self, case, comments, *args):
         created = case.created
-        # safe_print('len comments before "byclient" filter', len(comments))
         byclient_comments = comments.filter(byclient=False)#.order_by('-added')
-        # safe_print('len comments after "byclient" filter', len(byclient_comments))
         first_comm_date = None
         if len(byclient_comments) > 0:
-            # safe_print('first comment', byclient_comments[0])
             first_comm_date = byclient_comments[0].added
         else:
             first_comm_date = timezone.now()
@@ -223,7 +217,6 @@ class WeeklyReport:
             close_date = timezone.now()
         delta = close_date - created_date
         results = []
-        # print(case.number, case.number.count('10485'))
         resume_on = None
         for z in range(delta.days):
             start = created_date + timedelta(days=z)
@@ -262,7 +255,7 @@ class WeeklyReport:
                 ['called', 'TO', 'no issues'],
                 ['called', 'TO', 'all fine'],
                 # ['called', '*any client here*', str(['all fine', r'everything is back (online|to normal)', r'no( more)* issues', ''])], # this is just for anotation of futute design
-                ['all seems fine'],
+                ['all( (seems|is))* fine'],
                 [r'there(\'| i)s no errors*'],
                 [r'there(\'| a)re no errors*'],
                 [r'confirmed( that)*', ' is fine'],
@@ -272,17 +265,25 @@ class WeeklyReport:
                 [r'managed to', 'successfully'],
                 [r'agreed( that)*( the)* case can be closed'],
                 [r'agreed( to)*', r'close the case'],
-                #The printing is fine for the whole office.
+                # The printing is fine for the whole office.
+                # asked me not to repeat this procedure but to close the case
+                # telephone is replaced and they are currently using it
+                # is performing nice and smoothly
+                # all fine ,no issues
+                # everything is back online
+                # server is running again. 
+                # Confirmed with Pauline Crisp that everything is working
+                # everything is OK
+                # Called her back the till was working
             ]
         }
 
-        print(case.number, case.status)
+        print('='*10, case.number, case.status, '='*10)
         if not case.status.count('Closed'):
             result = 'n/a'
         elif case.status.count('First Call'):
             result = '1st call'
         else:
-            print('='*10, case.number, '='*10)
             # if case.number == '00010540':
             # print('\tlen comments for', case.number, len(comments))
             if len(comments) > 0:
@@ -294,28 +295,25 @@ class WeeklyReport:
                 else: # phone approval
                     all_tests = []
                     for test in APPROVALS['agent']:
-                        test_exp = r'[^\w]+?'.join(test)
+                        test_exp = r'.+?'.join(test)
                         test_result = re.findall(test_exp, conf_message, re.I)
                         if len(test_result) > 0:
-                            safe_print(test_exp)
+                            success_exp = test_exp
+                            safe_print('\t', test_exp)
                             safe_print('\t',test_result)
                         all_tests.append(len(test_result))
                     close_conf = any(all_tests)
 
                 if close_conf:                
-                    result = 'done'
+                    result = '<span title="' + comment.message + ' <<<<< ' + success_exp + '">done</span>'
                 else:
-                    result = ('fail', 'style="background-color:#FF0000;"')
+                    result = ('<span title="' + comment.message + '">fail</span>', 'style="background-color:#FF0000;"')
             else:
                 result = ('fail', 'style="background-color:#FF0000;"')
         return result
 
     def _GTM_or_RDC_used(self, case, comments, *args):
-        # words = re.findall(r'\w*', '\n'.join([z.message for z in comments]))
         big_text = '\n'.join([comm.message for comm in comments])
-        # GRM_mention = any([ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'GTM', r'Go To Meeting', r'GoToMeeting'] ])
-        # RDC_mention = any([ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'RDC', r'Remote Session', r'Remote Desktop'] ])
-
         GTM_mention = [ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'GTM', r'Go To Meeting', r'GoToMeeting'] ]
         RDC_mention = [ len(re.findall(r'[^\w]'+z+r'[^\w]', big_text, re.I)) for z in [r'RDC', r'Remote Session', r'Remote Desktop'] ]
         # print(case.number, 'GTM len findall per keywords', GTM_mention)

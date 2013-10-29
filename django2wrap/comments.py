@@ -56,7 +56,6 @@ class CommentCollector:
         else:
             target_time = now
         target_time = target_time.replace(hour = 0, minute = 0, second=0, microsecond=0)
-        #for card in bigbox:
         # push back chase based on 'Logged as Defect'
         if results['status'] == 'Logged as Defect':
             last_wednesday = target_time - timedelta(days = (target_time.weekday() - 2) % 7)
@@ -123,18 +122,12 @@ class CommentCollector:
                 p.save()
 
     def sync_comments(self, comments, case):
-        # pushes to the db, only if the record is not an exact match; used to fill up missing records, whithout touching the old ones.
-        #   would fail for matching 'unique' fields -- that needs a special resolve method!
         if len(comments) > 0:
             for comm in comments:
-                # find = Comment.objects.filter(case=case, **comm)
                 find = Comment.objects.filter(case=case, added=comm['added'])
                 if find:
                     p = find[0]
                     for k in comm.keys():
-                        # print('\t', '-'*20, getattr(p, k))
-                        # print('\t', '-'*20, comm[k])
-                        # print('\t', k, 'from', getattr(p, k), 'to', comm[k])
                         setattr(p, k, comm[k])
                     p.shift=case.shift
                     p.case=case
@@ -142,4 +135,3 @@ class CommentCollector:
                 else:
                     p = Comment(shift=case.shift, case=case, **comm)
                 p.save()
-

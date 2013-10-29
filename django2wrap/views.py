@@ -158,11 +158,10 @@ def chase(request, run_update_before_chase = False):
             },
         }
         data = [['Parameter', 'WIGHTLINK', 'REFLECTIVE'],]
-        for key in list(querysets['WLK'].keys())[1:]:
+        for key in ['total', 'to_chase', 'postponed']:
             data.append(['Count of %s Cases' % key.capitalize()])
             for sfdc in ['WLK', 'RSL']:
                 obj_key_ref = querysets[sfdc][key]['base']
-                # print(key,sfdc,obj_key_ref)
                 objects = querysets[sfdc][obj_key_ref]['results']
                 objects = getattr(objects, querysets[sfdc][key]['attr'])(**querysets[sfdc][key]['params'])
                 querysets[sfdc][key]['results'] = objects[:]
