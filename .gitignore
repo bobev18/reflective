@@ -4,7 +4,7 @@
 local_settings.py
 django2wrap/templates/last_chase_ruslts.html
 start.bat
-chasecheck/bicrypt.py
+django2wrap/bicrypt.py
 __pycache__/
 *mysqldb.cnf
 *.sqlite3

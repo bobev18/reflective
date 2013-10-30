@@ -18,7 +18,7 @@ except OSError:
     except OSError:
         execution_location = 'Bugzilla'
 
-from chasecheck.bicrypt import BiCrypt
+from django2wrap.bicrypt import BiCrypt
 import urllib.request
 codder = BiCrypt(settings.MODULEPASS)
 response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
@@ -177,14 +177,15 @@ class MyError(Exception):
 class CaseCollector:
     def __init__(self, debug = None, account = 'WLK'):
         self.debug_flag = debug
+        self.records = {}
         ###########################################################################################
         ## VALUE DETERMINING IF THE initial list of cases is pulled from the WEB or from the HDD ##
         ## ------------------------------------------------------------------------------------- ##
-        self.source = 'web'
-        ## ..................................................................................... ##
-        self.target_month = datetime.strftime(datetime.now() + timedelta(days=-30), '/%m/%Y')
-        ## ..................................................................................... ##
         self.account = account # 'RSL'
+        ## ..................................................................................... ##
+        
+        ## ..................................................................................... ##
+        
         ## ..................................................................................... ##
         self.num_records_to_pull = '20'
         ## ..................................................................................... ##
@@ -203,10 +204,6 @@ class CaseCollector:
         self.temp_folder = LOCATION_PATHS[execution_location]['temp_folder']
         ###########################################################################################
         self.support_keys = SUPPORT_STATUSES[self.account]
-        
-        self.records = {}
-        self.load_len = self.new_len = self.end_len = self.mo_len = 0
-        self.month_records = {}
         self.comments_collector = CommentCollector(debug = self.debug)
         
     def debug(self, *args, sep=' ', end='\n', destination=None):
