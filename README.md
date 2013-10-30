@@ -32,14 +32,20 @@ pull application at:
     http://192.168.3.28:8000/chase
 
 ##### CSRF validation
-Since Django 1.3, there is a "Cross Site Request Forgery protection" that validates whether a POST comes from an "valid" form -- that requires template tag {% csrf_token %} somewhere within the form in your template. [CSRF verification failed.](http://stackoverflow.com/questions/9692625/csrf-verification-failed-request-aborted-on-django)
+Since Django 1.3, there is a "Cross Site Request Forgery protection" that validates whether a POST comes from an "valid" form -- that requires template tag `{% csrf_token %}` somewhere within the form in your template. [CSRF verification failed.](http://stackoverflow.com/questions/9692625/csrf-verification-failed-request-aborted-on-django)
 
 ##### Usage of South
+the first time:
+
+    python manage.py syncdb
+    python manage.py schemamigration django2wrap --initial
+
+afterwards:
 
     python manage.py schemamigration django2wrap --auto
     python manage.py migrate django2wrap
 
-runing syncdb, after addition of south to the installed apps. gave:
+Note: if running syncdb, you get:
 
     ...
     Not synced (use migrations):
@@ -48,7 +54,7 @@ runing syncdb, after addition of south to the installed apps. gave:
      - django2wrap
     (use ./manage.py migrate to migrate these)
 
-to fix: use
+use this command to fix that:
 
     python manage.py syncdb --all
 
@@ -98,12 +104,12 @@ Code used:
 -----
 TO DO
 -----
- - move "detect environmet" snippet to the settings file
- - consolidate CONSTANTS
- - optimize for speed
- - implement unicode encapsulation:
-   * read as bytes & decode
-   * encode and write as bytes
+ * move "detect environmet" snippet to the settings file
+ * consolidate CONSTANTS
+ * optimize for speed
+ * implement unicode encapsulation:
+   - read as bytes & decode
+   - encode and write as bytes
 
 -----
 Bugs

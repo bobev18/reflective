@@ -122,7 +122,6 @@ INSTALLED_APPS = (
     'django.contrib.staticfiles',
     'django.contrib.humanize',
     'django_extensions',
-    'chasecheck',
     'django2wrap',
 )
 

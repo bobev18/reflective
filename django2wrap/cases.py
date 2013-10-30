@@ -368,7 +368,12 @@ class CaseCollector:
 
     def _captute_common_case_details(self, html, results):
         if 'contact' not in results.keys():
-            results['contact'] = re.findall(r'<a href="(.+?)" .+?>(.+?)</a>', siphon(html, 'Contact Name</td>', '</td>'))[0]
+            contact_matches = re.findall(r'<a href="(.+?)" .+?>(.+?)</a>', siphon(html, 'Contact Name</td>', '</td>'))
+            if len(contact_matches) > 0:
+                results['contact'] = contact_matches[0]
+            else:
+                results['contact'] = siphon(html, 'Guest Name</td>', '</td>')
+
         if 'subject'  not in results.keys():
             results['subject'] = remove_html_tags(siphon(html, 'Subject</td>', '</td>'))
         if 'number'  not in results.keys():
@@ -693,8 +698,8 @@ class CaseCollector:
             self.account = acc
             # self.load_web_and_merge(target_agent_name, target_time)
             new_records = self.load_web_data(target_time)
-            self.new_len = len(new_records)
-            self.end_len += self.new_len
+            # self.new_len = len(new_records)
+            # self.end_len += self.new_len
             self.sync(new_records)
             results += [ new_records[k] for k in sorted(new_records.keys()) ]
         return results
