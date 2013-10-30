@@ -24,24 +24,32 @@ Use *urls.py* under django2wrap to link URLs to specific View. The View can be d
 
 ##### Running test webserver
 run server as:
+
     python manage.py runserver 192.168.3.28:8000
+
 pull application at:
+
     http://192.168.3.28:8000/chase
 
 ##### CSRF validation
 Since Django 1.3, there is a "Cross Site Request Forgery protection" that validates whether a POST comes from an "valid" form -- that requires template tag {% csrf_token %} somewhere within the form in your template. [CSRF verification failed.](http://stackoverflow.com/questions/9692625/csrf-verification-failed-request-aborted-on-django)
 
 ##### Usage of South
+
     python manage.py schemamigration django2wrap --auto
     python manage.py migrate django2wrap
+
 runing syncdb, after addition of south to the installed apps. gave:
+
     ...
     Not synced (use migrations):
      - south
      - django_extensions
      - django2wrap
     (use ./manage.py migrate to migrate these)
+
 to fix: use
+
     python manage.py syncdb --all
 
 ------------
@@ -94,8 +102,8 @@ TO DO
  - consolidate CONSTANTS
  - optimize for speed
  - implement unicode encapsulation:
-   = read as bytes & decode
-   = encode and write as bytes
+   * read as bytes & decode
+   * encode and write as bytes
 
 -----
 Bugs
@@ -112,22 +120,22 @@ Significant part of the code, relies on the following convention:
 * the "datarange" is denoted as excel range, and it should contain the day and month rows
 * the second sheet of the document should represent sched colors as values -- that is achieved by a custom script function:
 
-    function TransferBGColor(targetRange) {
-      var ss - SpreadsheetApp.getActiveSpreadsheet();
-      var sheet - ss.getSheets()[0];
-      //Logger.log("range:" + targetRange);
-      var range - sheet.getRange(targetRange);
-      var bgColors - range.getBackgrounds();
+      function TransferBGColor(targetRange) {
+        var ss - SpreadsheetApp.getActiveSpreadsheet();
+        var sheet - ss.getSheets()[0];
+        //Logger.log("range:" + targetRange);
+        var range - sheet.getRange(targetRange);
+        var bgColors - range.getBackgrounds();
 
-      //var result - ss.getSheets()[1];
-      //var targets - result.getRange("B5:C6");
-      //targets.setValues(bgColors);
-      return bgColors;
-    }
+        //var result - ss.getSheets()[1];
+        //var targets - result.getRange("B5:C6");
+        //targets.setValues(bgColors);
+        return bgColors;
+      }
 
 * the usage of the script shown above, is just in the top-left cell:
 
-    TransferBGColor("A1:AC119")
+      TransferBGColor("A1:AC119")
 
 -----------
 Other
