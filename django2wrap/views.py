@@ -12,6 +12,7 @@ from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
 from django.template.response import TemplateResponse
 from django2wrap.weekly_report import WeeklyReport
+from django2wrap.kpi_report import KPIReport
 from django2wrap.cases import CaseCollector, MODEL_ARG_LIST, SUPPORT_STATUSES, SLA_RESPONSE
 case_collector = CaseCollector()
 # from . import chase as chaser
@@ -272,16 +273,17 @@ def update_case(request, link = None, number = None, sfdc = None):
 
     return render(request, 'results.html', {'title': 'Case Update', 'data': data})
 
-def kpi(request, run_update_before_chase = False):
+def kpi(request, run_update_before_chase = True):
+
     if run_update_before_chase:
         update_results = case_collector.update(target_time = timezone.now() - timedelta(days=31))
+        # update shifts
+        # update calls
     else:
         update_results = None
-
-    report = WeeklyReport()
-    data = report.action()
-
-    result = render(request, 'results.html', {'title': 'Weekly Report', 'data': data})
+    report = KPIReport()
+    data = report.produce()
+    result = render(request, 'results.html', {'title': 'KPI Report', 'data': data})
     return result
 
 def monthly(request, sfdc, target_month = None, run_update_before_chase = False):

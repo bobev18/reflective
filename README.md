@@ -110,6 +110,7 @@ TO DO
  * implement unicode encapsulation:
    - read as bytes & decode
    - encode and write as bytes
+ * JSONify
 
 -----
 Bugs

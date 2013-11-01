@@ -47,6 +47,9 @@ class Agent(models.Model):
     end = models.DateField()
     current_color = models.CharField(max_length=7, choices=AGENT_COLORS, default='#ff0000')
     email = models.EmailField(default='support@reflective.com')
+
+    class Meta:
+        unique_together = (("name", "start"),)
     
     def __str__(self):
         return self.name

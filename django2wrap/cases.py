@@ -3,6 +3,7 @@ import re, pickle, os, sys
 from datetime import datetime, timedelta
 from datetime import time as dtime
 import django.utils.timezone as timezone
+from django.utils.encoding import smart_text
 from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
 from django.db import connection
 from django.conf import settings
@@ -221,7 +222,7 @@ class CaseCollector:
 
     def clear_bad_chars(self, text):
         # KILL BAD UNICODE
-        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', ]
+        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae',  ]
         for bc in BAD_CHARS:
             text = text.replace(bc, '')
         # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
@@ -230,6 +231,8 @@ class CaseCollector:
         text = text.replace('u003C', '<')
         text = text.replace('u003E', '>')
         return text
+        # ok - tied the following and it errored on char: '\\u200b'
+        # return smart_text(text, encoding='utf-8', strings_only=False, errors='strict')
 
     def load_pickle(self):
         try:
