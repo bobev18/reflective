@@ -13,6 +13,7 @@ from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
 from django.template.response import TemplateResponse
 from django2wrap.weekly_report import WeeklyReport
 from django2wrap.kpi_report import KPIReport
+from django2wrap.emails import EmailCollector
 from django2wrap.cases import CaseCollector, MODEL_ARG_LIST, SUPPORT_STATUSES, SLA_RESPONSE
 case_collector = CaseCollector()
 # from . import chase as chaser
@@ -72,9 +73,10 @@ def license_form(request):
             subject = "license request case: " + cd['case'] + " priority: " + cd['priority']
             message = settings.LICENSE_MESSAGE_BODY
             for key in ['agent', 'case', 'priority', 'requestor', 'company', 'contact', 'hostid', 'product', 'license_type', 'license_status', 'license_function',]:
-                message = message.replace(key, cd[key])
+                # print('*key*','*'+key+'*', 'cd[key]', cd[key])
+                message = message.replace('*'+key+'*', cd[key])
             for key in ['pather_company', 'period', 'notes',]:
-                message = message.replace(key, "<tr><td><label>"+key.capitalize()+"</label></td><td>%s</td></tr>" % cd[key])
+                message = message.replace(key, "<tr><td><label>" + key.capitalize() + "</label></td><td>%s</td></tr>" % cd[key])
             message = message.replace("Pather_company", "Client")
             if cd['case'] == "0000":
                 to = ['Iliyan <iliyan@reflectivebg.com>'] #, peter@reflectivebg.com']
@@ -274,7 +276,6 @@ def update_case(request, link = None, number = None, sfdc = None):
     return render(request, 'results.html', {'title': 'Case Update', 'data': data})
 
 def kpi(request, run_update_before_chase = True):
-
     if run_update_before_chase:
         update_results = case_collector.update(target_time = timezone.now() - timedelta(days=31))
         # update shifts
@@ -283,6 +284,7 @@ def kpi(request, run_update_before_chase = True):
         update_results = None
     report = KPIReport()
     data = report.produce()
+    data.sort(key=lambda x: x[0])
     result = render(request, 'results.html', {'title': 'KPI Report', 'data': data})
     return result
 
@@ -367,3 +369,29 @@ def monthly(request, sfdc, target_month = None, run_update_before_chase = False)
     
     print(results)
     return render(request, 'results.html', {'title': 'Monthly Report', 'data': results})
+
+def temp_email_lists(request, sfdc):
+    collector = EmailCollector()
+    target_start_date = timezone.now().replace(month=10, day=1, hour=0, minute=0, second=0, microsecond=0)
+    target_end_date = target_start_date + timedelta(days = monthrange(target_start_date.year, target_start_date.month)[1])
+    results = collector.temporary_view_for_kpi_use(sfdc, target_start_date, target_end_date)
+    # data = []
+    # for email in results:
+    #     data.append([ email[z] for z in ['uid', 'sent', 'agent', 'shift'] ])
+    names = []
+    filtered_results = {}
+    for result in results:
+        if result['agent']:
+            if result['agent'].name in names:
+                filtered_results[result['agent'].name].append(result)
+            else:
+                names.append(result['agent'].name)
+                filtered_results[result['agent'].name] = [result]
+
+    # names = list(set(names))
+    # data = []
+    data = [['name', 'email count']]
+    for name in names:
+        data.append([name, len(filtered_results[name])])
+
+    return render(request, 'results.html', {'title': 'Temporary Email List', 'data': data})

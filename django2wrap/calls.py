@@ -135,6 +135,7 @@ class PhoneCalls:
             for call in self.data:
                 # find = Call.objects.filter(**call)
                 find = Call.objects.filter(filename=call['filename'])
+                print('find', find)
                 if not find:
                     p = Call(**call)
                     p.save()
