@@ -72,8 +72,8 @@ class WeeklyReport:
     def __init__(self):
 
         # self.header = ['num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case # to user', 'user confirmation obtained', 'post 3rd party SLA escalation', 'If Local PC, use GTM to view directly', 'escalation for no solution conf', ]
-        self.header = ['postponed', 'num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case num to user', 'user confirmation obtained', 'GTM or RDC used', 'case morphing', 'license SOP', 'support file SOP', 'escalation SOP', 'get ETA SOP', 'high chase', 'bug num', 'bug planned', 'escalation after confirmation chase x3', ]
-
+        self.header = ['postponed', ' num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case num to user', 'user confirmation obtained', 'GTM or RDC used', 'case morphing', 'license SOP', 'support file SOP', 'escalation SOP', 'get ETA SOP', 'high chase', 'bug num', 'bug planned', 'escalation after confirmation chase x3', ]
+        self.tinted = ['subject', 'created', 'created by', 'status', 'case morphing', 'license SOP', 'support file SOP' ]
         self.mapper = {
             'postponed'                              : {'attr': ['postpone']},
             'num'                                    : {'attr': ['number', 'sfdc', 'link']},
@@ -111,18 +111,43 @@ class WeeklyReport:
         self.temp_folder = LOCATION_PATHS[execution_location]['temp_folder']
 
     def _common(self, case):
-        ignores = ['Suspended messages in -65 minutes', 'WARNING: only', 'pass reset', 'password reset', 'Request Error count', 'WARNING: No Bookings receved',]
+        ignores = ['Suspended messages in -65 minutes', 'WARNING: only', 'pass reset', 'password reset', 'Request Error count', 'WARNING: No Bookings receved', 'account was locked', 'user locked']
         # 'user locked '
         return any([case.subject.lower().count(z.lower()) for z in ignores])
 
     def action(self):
-        results = []
+        results = [[]]
+        size = None
+        for column in self.header:
+            if column == 'status':
+                size = 60
+            if size:
+                results[0].append(column)
+            else:
+                results[0].append((column,'style="width:'+str(size)+'px;"'))
+
+        wlk_results = []
+        rsl_results = []
         for workset in [self.open_workset, self.closed_workset]:
-            results.append(self.header)
             for case in workset:
                 if not self._common(case):
                     comments = case.comments()
-                    results.append([ getattr(self, '_' + k.replace(' ', '_'))(case, comments, *self.mapper[k]['attr']) for k in self.header ])
+                    # results.append([ getattr(self, '_' + k.replace(' ', '_'))(case, comments, *self.mapper[k]['attr']) for k in self.header ])
+                    result_this_case = []
+                    for column in self.header:
+                        value = getattr(self, '_' + column.strip().replace(' ', '_'))(case, comments, *self.mapper[column.strip()]['attr'])
+                        if column in self.tinted and case.sfdc == 'RSL':
+                            value = (value, 'style="background-color:#CCFFFF;"')
+                        result_this_case.append(value)
+
+                    if case.sfdc == 'RSL':
+                        rsl_results.append(result_this_case)
+                    else:
+                        wlk_results.append(result_this_case)
+
+        wlk_results.sort(key=lambda x: x[5].count('Close'))
+        rsl_results.sort(key=lambda x: x[5].count('Close'))
+        results += rsl_results + wlk_results
         return results
 
     def action2text(self):
@@ -246,9 +271,10 @@ class WeeklyReport:
 
     def _user_confirmation_obtained(self, case, comments, *args):
         APPROVALS = {
-            'client': [['close the case'], ],
+            'client': [['close the case'], ['data( has) c(o|a)me through']],
             'agent' : [
                 ['called','everything is back online'],
+                ['called','printing is ok (today|now)'], #Called Ryde TO, printing is ok today.
                 ['Ferry+ is performing nice and smooth'],
                 ['This solved the problem'],
                 [r'problem( is)* solved'],
@@ -265,6 +291,10 @@ class WeeklyReport:
                 [r'managed to', 'successfully'],
                 [r'agreed( that)*( the)* case can be closed'],
                 [r'agreed( to)*', r'close the case'],
+                [r'it now seems to work'],
+                [r'this case can be closed'],
+                [r'that.{1,2}s perfect, thank you'],
+
                 # The printing is fine for the whole office.
                 # asked me not to repeat this procedure but to close the case
                 # telephone is replaced and they are currently using it
@@ -291,21 +321,31 @@ class WeeklyReport:
                 conf_message = comment.message
                 safe_print('latest comment', conf_message)
                 if comment.byclient: # approval in comment or inline copy of client's email
-                    close_conf = any([ len(re.findall(r'[^\w]+?'.join(z), conf_message, re.I)) for z in APPROVALS['client'] ])
+                    tests = APPROVALS['client']
                 else: # phone approval
-                    all_tests = []
-                    for test in APPROVALS['agent']:
-                        test_exp = r'.+?'.join(test)
-                        test_result = re.findall(test_exp, conf_message, re.I)
-                        if len(test_result) > 0:
-                            success_exp = test_exp
-                            safe_print('\t', test_exp)
-                            safe_print('\t',test_result)
-                        all_tests.append(len(test_result))
-                    close_conf = any(all_tests)
+                    tests = APPROVALS['agent']
+                    
+                    # all_tests = []
+                    # for test in :
+                    #     test_expression = r'[^\w]+?'.join(test)
+                    #     test_result = re.findall(test_expression, conf_message, re.I)
+                    #     if len(test_result):
+                    #         success_expression = test_expression
+                    #     all_tests.append(len(test_result))
+                    # close_conf = any(all_tests)
+                all_tests = []
+                for test in tests:
+                    test_expression = r'.+?'.join(test)
+                    test_result = re.findall(test_expression, conf_message, re.I)
+                    if len(test_result):
+                        success_expression = test_expression
+                        safe_print('\t', test_expression)
+                        safe_print('\t',test_result)
+                    all_tests.append(len(test_result))
+                close_conf = any(all_tests)
 
                 if close_conf:                
-                    result = '<span title="' + comment.message + ' <<<<< ' + success_exp + '">done</span>'
+                    result = '<span title="' + comment.message + ' <<<<< ' + success_expression + '">done</span>'
                 else:
                     result = ('<span title="' + comment.message + '">fail</span>', 'style="background-color:#FF0000;"')
             else:

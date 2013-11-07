@@ -123,7 +123,7 @@ def sync(request):
                 clean_data['agent'] = None
             if clean_data['from_date']:
                 # clear the time -- just for the time being
-                clean_data['from_date'] = datetime(*tuple( getattr(clean_data['from_date'], z) for z in ['year', 'month', 'day'] ))
+                clean_data['from_date'] = datetime(tzinfo = timezone.get_default_timezone(), *tuple( getattr(clean_data['from_date'], z) for z in ['year', 'month', 'day'] ))
             action = request.POST['action'] #form can render select box, and I'm going for a several submit buttons
             actuator = actuator_classes[clean_data['system']]()
             results = getattr(actuator, action.lower())(clean_data['agent'], clean_data['from_date'])

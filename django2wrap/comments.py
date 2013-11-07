@@ -34,10 +34,8 @@ def siphon(text, begin, end):
 
 class CommentCollector:
     def __init__(self, debug = None):
+        self.debug_flag = debug
         self.temp_folder = 'd:/temp/'
-        # self.debug_flag = debug
-        self.debug_flag = True
-
         
     def debug(self, *args, sep=' ', end='\n', destination=None):
         if self.debug_flag:

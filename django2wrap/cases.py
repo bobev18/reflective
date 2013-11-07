@@ -528,6 +528,8 @@ class CaseCollector:
         else:
             goal_time = target_time
         # for page_index in range(1, upto_page):
+        print('earliest_date', earliest_date)
+        print('goal_time', goal_time)
         while earliest_date > goal_time and upto_page > page_index:
             txdata  = URLS[self.account][self.view]['txdata'] %(str(page_index), self.num_records_to_pull)
             connection.handle.setdata(txdata)
