@@ -88,6 +88,58 @@ For MySQL tested few alternatives:
  * [PyMySQL](https://github.com/PyMySQL/PyMySQL) - had to install manually, as pip install failed, and didn't work in the end
  * [MySQL-Connector-Python](http://dev.mysql.com/downloads/connector/python/) - does not integrate in Django
 
+Currently making another try with MySQL-Connector-Python. The query for RELEASE SAVEPOINT #id was returning error that there is no such savepoint, so I edited c:/Python32/Lib/site-packages/mysql/connector/connection.py (arround line: 634) as follows:
+     
+    if query.count(b'RELEASE SAVEPOINT'):
+        result = {'insert_id': 0, 'affected_rows': 0, 'field_count': 0, 'warning_count': 0, 'server_status': 2}
+        print('\t\tskip this one')
+    else:
+        result = self._handle_result(the_result)
+
+This got me past, `python manage.py syncdb --all`, has some test in South to check for *autocommit* is available, abd throws:
+
+    Traceback (most recent call last):
+      File "manage.py", line 10, in <module>
+        execute_from_command_line(sys.argv)
+      File "c:\python32\lib\site-packages\django\core\management\__init__.py", line 399, in execute_from_command_line
+        utility.execute()
+      File "c:\python32\lib\site-packages\django\core\management\__init__.py", line 392, in execute
+        self.fetch_command(subcommand).run_from_argv(self.argv)
+      File "c:\python32\lib\site-packages\django\core\management\base.py", line 242, in run_from_argv
+        self.execute(*args, **options.__dict__)
+      File "c:\python32\lib\site-packages\django\core\management\base.py", line 285, in execute
+        output = self.handle(*args, **options)
+      File "c:\python32\lib\site-packages\south\management\commands\migrate.py", line 111, in handle
+        ignore_ghosts = ignore_ghosts,
+      File "c:\python32\lib\site-packages\south\migration\__init__.py", line 220, in migrate_app
+        success = migrator.migrate_many(target, workplan, database)
+      File "c:\python32\lib\site-packages\south\migration\migrators.py", line 232, in migrate_many
+        result = migrator.__class__.migrate_many(migrator, target, migrations, database)
+      File "c:\python32\lib\site-packages\south\migration\migrators.py", line 307, in migrate_many
+        result = self.migrate(migration, database)
+      File "c:\python32\lib\site-packages\south\migration\migrators.py", line 132, in migrate
+        result = self.run(migration, database)
+      File "c:\python32\lib\site-packages\south\migration\migrators.py", line 113, in run
+        if not south.db.db.has_ddl_transactions:
+      File "c:\python32\lib\site-packages\django\utils\functional.py", line 49, in __get__
+        res = instance.__dict__[self.func.__name__] = self.func(instance)
+      File "c:\python32\lib\site-packages\south\db\generic.py", line 124, in has_ddl_transactions
+        if getattr(connection.features, 'supports_transactions', True):
+      File "c:\python32\lib\site-packages\django\utils\functional.py", line 49, in __get__
+        res = instance.__dict__[self.func.__name__] = self.func(instance)
+      File "c:\python32\lib\site-packages\django\db\backends\__init__.py", line 664, in supports_transactions
+        self.connection.leave_transaction_management()
+      File "c:\python32\lib\site-packages\django\db\backends\__init__.py", line 318, in leave_transaction_management
+        self.set_autocommit(not managed)
+      File "c:\python32\lib\site-packages\django\db\backends\__init__.py", line 333, in set_autocommit
+        self._set_autocommit(autocommit)
+      File "c:\python32\lib\site-packages\django\db\backends\__init__.py", line 263, in _set_autocommit
+        raise NotImplementedError
+    NotImplementedError
+
+I do have the autocommit set to `True` in the DB config in the local_settings. I checked [22.6.4.3. Inserting Data Using Connector/Python](http://dev.mysql.com/doc/refman/5.5/en/connector-python-example-cursor-transaction.html), which indicates that there is autocommit option. I need to find a way to enable it, or ensure that South can properly test for it.
+
+
 ##### SQLite3 on Win
 Initial DB sync requires setup of superuser via prompt. Using SQLite3 on Win caused an issue -- entering any data via the prompt does not register the pressing of Enter.
 Fix: replace the "input" method that is imported from "six" in the following files:

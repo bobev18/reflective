@@ -271,7 +271,7 @@ class WeeklyReport:
 
     def _user_confirmation_obtained(self, case, comments, *args):
         APPROVALS = {
-            'client': [['close the case'], ['data( has) c(o|a)me through']],
+            'client': [['close the case'], ['data( has) c(o|a)me through'],['happy to close this case']],
             'agent' : [
                 ['called','everything is back online'],
                 ['called','printing is ok (today|now)'], #Called Ryde TO, printing is ok today.
@@ -294,7 +294,8 @@ class WeeklyReport:
                 [r'it now seems to work'],
                 [r'this case can be closed'],
                 [r'that.{1,2}s perfect, thank you'],
-
+                [r'happy to close this case'],
+                
                 # The printing is fine for the whole office.
                 # asked me not to repeat this procedure but to close the case
                 # telephone is replaced and they are currently using it
