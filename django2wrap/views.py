@@ -133,7 +133,7 @@ def sync(request):
 
 def chase(request, run_update_before_chase = False):
     last_time = Resource.objects.get(name='cases').last_sync
-    if request.method == "POST" or not run_update_before_chase:
+    if (not run_update_before_chase) or request.method == "POST":
         cases_closed_since_last_chase = []
         all_open_cases = Case.objects.exclude(status__contains = 'Close') #db
         open_numbers = [ (getattr(z, 'number'), getattr(z, 'sfdc')) for z in all_open_cases ]
@@ -162,15 +162,19 @@ def chase(request, run_update_before_chase = False):
         }
         data = [['Parameter', 'WIGHTLINK', 'REFLECTIVE'],]
         for key in ['total', 'to_chase', 'postponed']:
-            data.append(['Count of %s Cases' % key.capitalize()])
+            data.append(['Count of %s Cases' % key.title()]) # .replace('_', ' ')
             for sfdc in ['WLK', 'RSL']:
                 obj_key_ref = querysets[sfdc][key]['base']
                 objects = querysets[sfdc][obj_key_ref]['results']
                 objects = getattr(objects, querysets[sfdc][key]['attr'])(**querysets[sfdc][key]['params'])
                 querysets[sfdc][key]['results'] = objects[:]
-                data[-1].append(len(objects))
-            if key == 'to_chase':
-                data[-1] = [ (z, 'style="background-color:#FF0000;"') for z in data[-1] ]
+                if key == 'to_chase':
+                    if len(objects) == 0:
+                        data[-1].append((len(objects), 'style="background-color:#00FF00;"'))
+                    else:
+                        data[-1].append((len(objects), 'style="background-color:#FF0000;"'))
+                else:
+                    data[-1].append(len(objects))
         URLS = {
             'WLK': '<a href="https://eu1.salesforce.com/%s" target="_blank">%s</a>',
             'RSL': '<a href="https://emea.salesforce.com/%s" target="_blank">%s</a>',
@@ -178,14 +182,14 @@ def chase(request, run_update_before_chase = False):
         table = []
         keys = ['WLK to_chase', 'RSL to_chase', 'WLK postponed', 'RSL postponed'] # to preserve order
         for key in keys:
-            if key.count('to_chase'):
+            query_set = querysets[key.split(' ')[0]][key.split(' ')[1]]['results']
+            if key.count('to_chase') and len(query_set):
                 color = '#FF0000'
             else:
                 color = '#AAAAAA'
             table.append([('<h2>' + key + '</h2>', 'style="background-color:' + color + ';text-align:center;" colspan="' + str(len(header)) + '"')])
             table.append([ ('<b>' + z + '</b>', 'style="text-align:center;"') for z in header[:-1] ])
-            qs = querysets[key.split(' ')[0]][key.split(' ')[1]]['results']
-            for case in qs:
+            for case in query_set:
                 row = [ getattr(case, z) for z in header ]
                 link = row.pop()
                 row[0] = URLS[key.split(' ')[0]] % (link, row[0])

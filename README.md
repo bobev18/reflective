@@ -137,8 +137,7 @@ This got me past, `python manage.py syncdb --all`, has some test in South to che
         raise NotImplementedError
     NotImplementedError
 
-I do have the autocommit set to `True` in the DB config in the local_settings. I checked [22.6.4.3. Inserting Data Using Connector/Python](http://dev.mysql.com/doc/refman/5.5/en/connector-python-example-cursor-transaction.html), which indicates that there is autocommit option. I need to find a way to enable it, or ensure that South can properly test for it.
-
+The test of the transactional capabilities of the DB works fine. The `set_autocommit` call is in the `finally` clause of the test, which means it's executed regardless of the test success. The problem is in the "middleware" implementation of the connector -- it seems to be missing some methods like `set_autocommit`, which are required for South to work.
 
 ##### SQLite3 on Win
 Initial DB sync requires setup of superuser via prompt. Using SQLite3 on Win caused an issue -- entering any data via the prompt does not register the pressing of Enter.

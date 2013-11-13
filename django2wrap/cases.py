@@ -222,7 +222,7 @@ class CaseCollector:
 
     def clear_bad_chars(self, text):
         # KILL BAD UNICODE
-        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae',  ]
+        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d',  ]
         for bc in BAD_CHARS:
             text = text.replace(bc, '')
         # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
