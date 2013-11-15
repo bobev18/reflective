@@ -69,7 +69,7 @@ class MyError(Exception):
         return repr(self.value)
 
 class WeeklyReport:
-    def __init__(self):
+    def __init__(self, report_start_date = None):
 
         # self.header = ['num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case # to user', 'user confirmation obtained', 'post 3rd party SLA escalation', 'If Local PC, use GTM to view directly', 'escalation for no solution conf', ]
         self.header = ['postponed', ' num', 'subject', 'created', 'created by', 'status', 'informative subject', 'SLA', 'resolution not documented', 'wrong resolution', 'provided solution without understanding', 'acquire user and problem details', 'feedback to user within 1h', 'chasing per', 'provide case num to user', 'user confirmation obtained', 'GTM or RDC used', 'case morphing', 'license SOP', 'support file SOP', 'escalation SOP', 'get ETA SOP', 'high chase', 'bug num', 'bug planned', 'escalation after confirmation chase x3', ]
@@ -102,16 +102,21 @@ class WeeklyReport:
             'bug planned'                            : {'attr': []},
             'escalation after confirmation chase x3' : {'attr': []}, # email model
         }
-        run_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        week_back_date = run_date - timedelta(days=7)
-        self.closed_workset = Case.objects.filter(closed__range = (week_back_date, run_date), status__contains = 'Close').order_by('sfdc', 'number')
+        if report_start_date:
+            report_end_date = report_start_date + timedelta(days=7)
+        else:
+            report_end_date = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+            report_start_date = report_end_date - timedelta(days=7)
+
+        print('true working period for the weekly:', report_start_date, report_end_date)
+        self.closed_workset = Case.objects.filter(closed__range = (report_start_date, report_end_date), status__contains = 'Close').order_by('sfdc', 'number')
         self.open_workset = Case.objects.exclude(status__contains = 'Close').order_by('sfdc', 'number')
         self.tz = timezone.get_current_timezone()
-        self.run_date = timezone.make_naive(run_date, self.tz).strftime("%d.%m.%Y")
+        self.report_end_date = timezone.make_naive(report_end_date, self.tz).strftime("%d.%m.%Y")
         self.temp_folder = LOCATION_PATHS[execution_location]['temp_folder']
 
     def _common(self, case):
-        ignores = ['Suspended messages in -65 minutes', 'WARNING: only', 'pass reset', 'password reset', 'Request Error count', 'WARNING: No Bookings receved', 'account was locked', 'user locked']
+        ignores = ['Suspended messages in -65 minutes', 'WARNING: only', 'pass reset', 'password reset', 'Request Error count', 'WARNING: No Bookings receved', 'account was locked', 'user locked', 'account is locked']
         # 'user locked '
         return any([case.subject.lower().count(z.lower()) for z in ignores])
 
@@ -160,7 +165,7 @@ class WeeklyReport:
                     for k in self.header:
                         results += str(getattr(self, '_' + k.replace(' ', '_'))(case, comments, *self.mapper[k]['attr'])) + SEPARATOR
                     results += '\n'
-        with open(self.temp_folder+'weekly_'+self.run_date+'.csv', 'w', encoding = 'utf-8') as f:
+        with open(self.temp_folder+'weekly_'+self.report_end_date+'.csv', 'w', encoding = 'utf-8') as f:
             f.write(remove_html_tags(results))
         return results
 
@@ -271,7 +276,7 @@ class WeeklyReport:
 
     def _user_confirmation_obtained(self, case, comments, *args):
         APPROVALS = {
-            'client': [['close the case'], ['data( has) c(o|a)me through'],['happy to close this case']],
+            'client': [['close the case'], ['data( has) c(o|a)me through'],['happy to close this case'], ['Please close this case'],['close this one']],
             'agent' : [
                 ['called','everything is back online'],
                 ['called','printing is ok (today|now)'], #Called Ryde TO, printing is ok today.
@@ -295,7 +300,10 @@ class WeeklyReport:
                 [r'this case can be closed'],
                 [r'that.{1,2}s perfect, thank you'],
                 [r'happy to close this case'],
-                
+                [r'printing is fine'],
+                [r'\. *No problems\.'],
+                [r'Got confirmation that they received the email'],
+
                 # The printing is fine for the whole office.
                 # asked me not to repeat this procedure but to close the case
                 # telephone is replaced and they are currently using it

@@ -10,6 +10,24 @@
     <body>
     {% load extras %}
     <div id=\"stylized\" class=\"myblock\">
+        {% if form.errors %}
+            <p style="color: red;">
+                Please correct the error{{ form.errors|pluralize }} below.
+            </p>
+        {% endif %}
+        
+        {% if form %}
+        <form id="form" action="" method="post">
+            {% csrf_token %}
+            <table>
+                {{ form.as_table }}
+                <tr><td colspan="2" style="text-align:center;">
+                <input name="action" type="submit" value="Submit">
+                </td></tr>
+            </table>
+        </form>
+        <br>
+        {% endif %}
         {% if data %}
             <h1>{{title}} Results</h1>
             {{data|table|safe}}

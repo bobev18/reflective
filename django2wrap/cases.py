@@ -49,7 +49,7 @@ SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
 SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1}
 SLA_MAP = {
     'WLK': {
-        ('Ferry+', 'Local PC', 'Email', 'Wide Area Network', 'Sentinel', 'NiceLabel'): {'1': 1, '2': 8, '3': 15 },
+        ('Ferry+', 'Local PC', 'Email', 'Wide Area Network', 'Sentinel', 'NiceLabel', 'CarRes'): {'1': 1, '2': 8, '3': 15 },
         ('DRS', 'CDI', 'Blackberry Server'): {'1': 3, '2': 8, '3': 15, },
         ('Profit Optimisation (RTS)', 'Great Plains', 'RPO', 'Intranet'): {'1': 4, '2': 8, '3': 15 },
         ('CRM', 'Document Management', 'Sailing Statistics (AIS)'): {'1': 8, '2': 15, '3': 22 }
@@ -582,6 +582,11 @@ class CaseCollector:
         records = {}
         for k in sorted(new_records.keys()):
             new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=timezone.get_default_timezone())
+            # if not target_time or ('closed' in new_records[k].keys() and new_records[k]['closed'] > target_time) or new_records[k]['created'] > target_time:
+            ###
+            #### the above is correct idea, but to work it needs more, as the list of cases is already filtered by page_loading
+            #### ideally we want to know cases that were already opened at the target_time -- these will have current state either still open, or have close between target time and now
+            ###
             if not target_time or new_records[k]['created'] > target_time:
                 html = self.pull_one_case(connection, new_records[k]['link'])
                 html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')

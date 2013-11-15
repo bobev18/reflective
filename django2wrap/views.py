@@ -1,4 +1,4 @@
-import imp, os
+import imp, os, re
 from calendar import monthrange
 from datetime import datetime, timedelta, date
 import django.utils.timezone as timezone
@@ -7,7 +7,7 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect
 from django.shortcuts import render
 from django.core.mail import send_mail, mail_admins, mail_managers, EmailMessage, EmailMultiAlternatives
-from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm
+from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm, WeeklyForm
 # from django.db.models import Max
 from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
 from django.template.response import TemplateResponse
@@ -54,10 +54,10 @@ def escalation_form(request):
             for key in ['agent', 'case', 'priority', 'company', 'contact', 'description', 'investigated']:
                 message = message.replace('*' + key + '*', cd[key])
             if cd['case'] == "0000":
-                to = ['Iliyan <iliyan@reflectivebg.com>'] #, peter@reflectivebg.com']
+                to = [ z for z in settings.ESCALATION_CONTACTS if z.count('Iliyan') ]
             else:
                 to = settings.ESCALATION_CONTACTS
-            mymail = EmailMultiAlternatives(subject, message, 'Support <support@reflective.com>', to, headers = {'Reply-To': 'support@reflective.com'})
+            mymail = EmailMultiAlternatives(subject, message, settings.CHASE_EMAIL_FROM, to, headers = {'Reply-To': settings.CHASE_EMAIL_FROM})
             mymail.attach_alternative(message, 'text/html')
             mymail.send(fail_silently=False)
             return HttpResponseRedirect('/')
@@ -76,14 +76,14 @@ def license_form(request):
                 # print('*key*','*'+key+'*', 'cd[key]', cd[key])
                 message = message.replace('*'+key+'*', cd[key])
             for key in ['pather_company', 'period', 'notes',]:
-                message = message.replace(key, "<tr><td><label>" + key.capitalize() + "</label></td><td>%s</td></tr>" % cd[key])
-            message = message.replace("Pather_company", "Client")
+                message = message.replace('*'+key+'*', "<tr><td><label>" + key.capitalize() + "</label></td><td>%s</td></tr>" % cd[key])
+            message = message.replace("Pather_company", "Pather Company (Client)")
             if cd['case'] == "0000":
-                to = ['Iliyan <iliyan@reflectivebg.com>'] #, peter@reflectivebg.com']
+                to = [ z for z in settings.LICENSE_CONTACTS if z.count('Iliyan') ]
             else:
                 to = settings.LICENSE_CONTACTS
 
-            mymail = EmailMultiAlternatives(subject, message, 'Support <support@reflective.com>', to, headers = {'Reply-To': 'support@reflective.com'})
+            mymail = EmailMultiAlternatives(subject, message, settings.CHASE_EMAIL_FROM, to, headers = {'Reply-To': settings.CHASE_EMAIL_FROM})
             mymail.attach_alternative(message, 'text/html')
             if request.FILES:
                 hostid_form = request.FILES['host_id_change_form']
@@ -217,17 +217,35 @@ def chase(request, run_update_before_chase = False):
 
     return result
 
-def weekly(request, run_update_before_chase = True):
-    # last_time = Resource.objects.get(name='cases').last_sync
-    if run_update_before_chase:
-        update_results = case_collector.update(target_time = timezone.now() - timedelta(days=8))
+def weekly(request, from_date = None, run_update_before_chase = True):
+    data = None
+    form = WeeklyForm()
+    # print('request', request)
+    if request.method == 'POST':# and 'from_date' in request.POST.keys():
+        report_start_date = datetime(tzinfo = timezone.get_default_timezone(), *tuple( int(request.POST['from_date_'+z]) for z in ['year', 'month', 'day'] ))
+        # form = WeeklyForm(request.POST)
+        # if form.is_valid():
+        #     clean_data = form.cleaned_data
+        #     if clean_data['from_date']:
+        #         report_start_date = datetime(tzinfo = timezone.get_default_timezone(), *tuple( getattr(clean_data['from_date'], z) for z in ['year', 'month', 'day'] ))
+    elif from_date:
+            match = re.match(r'(?P<year>\d\d\d\d).(?P<month>\d\d).(?P<day>\d\d)', from_date)
+            print('matches', match.groups())
+            from_date_details = { k:int(v) for k,v in match.groupdict().items() }
+            report_start_date = datetime(tzinfo = timezone.get_default_timezone(), *tuple( int(from_date_details[z]) for z in ['year', 'month', 'day'] ))
+            # report = WeeklyReport(report_start_date)
+            # data = report.action()
     else:
-        update_results = None
+        report_start_date = None
 
-    report = WeeklyReport()
-    data = report.action()
+    print('report_start_date', report_start_date)
+    if report_start_date:
+        if run_update_before_chase:
+            update_results = case_collector.update(target_time = timezone.now() - timedelta(days=8))
+        report = WeeklyReport(report_start_date)
+        data = report.action()
 
-    result = render(request, 'results.html', {'title': 'Weekly Report', 'data': data})
+    result = render(request, 'results.html', {'title': 'Weekly Report', 'data': data, 'form': form})
     return result
 
 def update_case(request, link = None, number = None, sfdc = None):

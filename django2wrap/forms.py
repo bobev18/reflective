@@ -46,3 +46,6 @@ class SyncDetailsForm(forms.Form):
     agent = forms.ChoiceField(choices=((None, '-----'),) + tuple(set( (z.name,z.name) for z in Agent.objects.all() )), help_text='Agent', required=False, initial=None)
     from_date = forms.DateField(widget=SelectDateWidget(years = tuple( str(z + 2010) for z in range(4) )), required=False)
     # to_date = forms.DateField(widget=SelectDateWidget(years = set( str(z + 2010) for z in range(4) )), required=False)
+
+class WeeklyForm(forms.Form):
+    from_date = forms.DateField(widget=SelectDateWidget(years=(2013,)), required=False)
