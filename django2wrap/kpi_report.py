@@ -9,34 +9,6 @@ from django.conf import settings
 from itertools import groupby
 from django2wrap.weekly_report import WeeklyReport
 
-# detect environment
-try:
-    dump = os.listdir('/home/bob/Documents/gits/reflective/')
-    execution_location = 'Laptop'
-except OSError:
-    try:
-        dump = os.listdir('D:/temp/')
-        execution_location = 'Office'
-    except OSError:
-        execution_location = 'Bugzilla'
-
-LOCATION_PATHS = {
-    'Laptop': {
-        'local_settings': '/home/bob/Documents/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : '/home/bob/Documents/temp/',
-        'pickle_folder' : '/home/bob/Documents/temp/',
-    },
-    'Office':{
-        'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : 'D:/temp/',
-        'pickle_folder' : 'D:/temp/',
-    },
-    'Bugzilla':{
-        'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : 'C:/temp/',
-        'pickle_folder' : 'C:/temp/',
-    }
-}
 LINKS = {
     'WLK': '<a href="https://eu1.salesforce.com/%s" target="_blank">%s</a>',
     'RSL': '<a href="https://emea.salesforce.com/%s" target="_blank">%s</a>',

@@ -4,6 +4,7 @@ import django.utils.timezone as timezone
 from django2wrap.models import Agent, Shift
 from django.conf import settings # import EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD
 
+
 NIKNAMES = { 
     'Rosti'  : ['Rosti', 'Rostislav'],
     'Radi'   : ['Radi', 'Rado', 'Radoslav'], 
@@ -15,7 +16,7 @@ NIKNAMES = {
     'Ivelin' : ['Ivelin'],
 }
 
-PICKLE_PATHFILE = 'D:/temp/emails_'
+PICKLE_PATHFILE = settings.LOCATION_PATHS['pickle_folder']
 
 HTML_CODE_PATTERN = re.compile(r'<.*?>')
 remove_html_tags = lambda data: HTML_CODE_PATTERN.sub('', data)

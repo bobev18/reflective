@@ -5,6 +5,7 @@ import django.utils.timezone as timezone
 from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
 from django2wrap.models import Comment
 from django.db import connection
+from django.conf import settings
 
 HTML_CODE_PATTERN = re.compile(r'<.*?>')
 
@@ -35,7 +36,7 @@ def siphon(text, begin, end):
 class CommentCollector:
     def __init__(self, debug = None):
         self.debug_flag = debug
-        self.temp_folder = 'd:/temp/'
+        self.temp_folder = settings.LOCATION_PATHS['temp_folder']
         
     def debug(self, *args, sep=' ', end='\n', destination=None):
         if self.debug_flag:

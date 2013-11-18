@@ -8,42 +8,6 @@ from django.db.models import Min
 # from django.db import connection
 from django.conf import settings
 
-# detect environment
-try:
-    dump = os.listdir('/home/bob/Documents/gits/reflective/')
-    execution_location = 'Laptop'
-except OSError:
-    try:
-        dump = os.listdir('D:/temp/')
-        execution_location = 'Office'
-    except OSError:
-        execution_location = 'Bugzilla'
-
-# from django2wrap.bicrypt import BiCrypt
-# import urllib.request
-# codder = BiCrypt(settings.MODULEPASS)
-# response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
-# code = response.read()      # a `bytes` object
-# decoded_msg = codder.decode(code)
-# exec(decoded_msg)
-
-LOCATION_PATHS = {
-    'Laptop': {
-        'local_settings': '/home/bob/Documents/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : '/home/bob/Documents/temp/',
-        'pickle_folder' : '/home/bob/Documents/temp/',
-    },
-    'Office':{
-        'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : 'D:/temp/',
-        'pickle_folder' : 'D:/temp/',
-    },
-    'Bugzilla':{
-        'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : 'C:/temp/',
-        'pickle_folder' : 'C:/temp/',
-    }
-}
 LINKS = {
     'WLK': '<a href="https://eu1.salesforce.com/%s" target="_blank">%s</a>',
     'RSL': '<a href="https://emea.salesforce.com/%s" target="_blank">%s</a>',
@@ -113,7 +77,7 @@ class WeeklyReport:
         self.open_workset = Case.objects.exclude(status__contains = 'Close').order_by('sfdc', 'number')
         self.tz = timezone.get_current_timezone()
         self.report_end_date = timezone.make_naive(report_end_date, self.tz).strftime("%d.%m.%Y")
-        self.temp_folder = LOCATION_PATHS[execution_location]['temp_folder']
+        self.temp_folder = settings.LOCATION_PATHS['temp_folder']
 
     def _common(self, case):
         ignores = ['Suspended messages in -65 minutes', 'WARNING: only', 'pass reset', 'password reset', 'Request Error count', 'WARNING: No Bookings receved', 'account was locked', 'user locked', 'account is locked']

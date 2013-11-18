@@ -75,9 +75,9 @@ def license_form(request):
             for key in ['agent', 'case', 'priority', 'requestor', 'company', 'contact', 'hostid', 'product', 'license_type', 'license_status', 'license_function',]:
                 # print('*key*','*'+key+'*', 'cd[key]', cd[key])
                 message = message.replace('*'+key+'*', cd[key])
-            for key in ['pather_company', 'period', 'notes',]:
+            for key in ['partner_company', 'period', 'notes',]:
                 message = message.replace('*'+key+'*', "<tr><td><label>" + key.capitalize() + "</label></td><td>%s</td></tr>" % cd[key])
-            message = message.replace("Pather_company", "Pather Company (Client)")
+            message = message.replace("Partner_company", "Partner Company (Client)")
             if cd['case'] == "0000":
                 to = [ z for z in settings.LICENSE_CONTACTS if z.count('Iliyan') ]
             else:

