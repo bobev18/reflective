@@ -132,7 +132,6 @@ def sync(request):
     return render(request, 'sync.html', locals())
 
 def chase(request, run_update_before_chase = False):
-    last_time = Resource.objects.get(name='cases').last_sync
     if (not run_update_before_chase) or request.method == "POST":
         cases_closed_since_last_chase = []
         all_open_cases = Case.objects.exclude(status__contains = 'Close') #db
@@ -205,7 +204,7 @@ def chase(request, run_update_before_chase = False):
         for num, sfdc in cases_closed_since_last_chase:
             case_collector.update_one(target = num, sfdc = sfdc)
 
-        result = render(request, 'chase.html', {'last_time': last_time, 'data': data, 'table': table, 'cases_closed_since_last_chase': cases_closed_since_last_chase})
+        result = render(request, 'chase.html', {'data': data, 'table': table, 'cases_closed_since_last_chase': cases_closed_since_last_chase})
         email_result = render(request, 'chase.html', {'data': data, 'table': table})
         raw_result = email_result.content.decode('utf-8')
         if "sendit" in request.POST.keys():
@@ -213,7 +212,7 @@ def chase(request, run_update_before_chase = False):
             mymail.attach_alternative(raw_result, 'text/html')
             mymail.send(fail_silently=False)
     else:
-        result = render(request, 'chase.html', {'last_time': last_time})
+        result = render(request, 'chase.html')
 
     return result
 

@@ -19,18 +19,7 @@ exec(decoded_msg)
 
 SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
 SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1}
-SLA_MAP = {
-    'WLK': {
-        ('Ferry+', 'Local PC', 'Email', 'Wide Area Network', 'Sentinel', 'NiceLabel', 'CarRes'): {'1': 1, '2': 8, '3': 15 },
-        ('DRS', 'CDI', 'Blackberry Server'): {'1': 3, '2': 8, '3': 15, },
-        ('Profit Optimisation (RTS)', 'Great Plains', 'RPO', 'Intranet'): {'1': 4, '2': 8, '3': 15 },
-        ('CRM', 'Document Management', 'Sailing Statistics (AIS)'): {'1': 8, '2': 15, '3': 22 }
-    },
-    'RSL': {
-        'reason' : {'License Request': 2},
-        'problem': {'Question': 8, 'Problem': 16, 'Feature Request': 9999, } 
-    }
-}
+
 VIEW_MAPS = {
     'WLK': [
         {'use_in': ['all', 'closed', 'open'], 'name': 'created', 're_start': r'"CASES\.CREATED_DATE":', 'inner_index': None},
@@ -115,6 +104,8 @@ URLS = {
     }
 }
 
+TZI = timezone.get_default_timezone()
+
 HTML_CODE_PATTERN = re.compile(r'<.*?>')
 SUPPORT_STATUSES = {
     'WLK': { 'response': ['Created', 'New'], 'work': ['Created', 'New', 'In Progress', 'Responded', ], 'owner': 'Wightlink Support Team' },
@@ -146,6 +137,421 @@ class MyError(Exception):
         self.value = value
     def __str__(self):
         return repr(self.value)
+
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+
+class CaseObject:
+    def __init__(self, account, link, raw):
+        self.debug_flag = False
+        self.account = account
+        # self.number = number
+        self.link = link
+        self.raw = raw
+
+    def process(self):
+        self.sections = self.split_case_sections()
+        # section case details
+        self.details = self.parse_case_header_details(self.sections['case_details'])
+        self.agent_name = self.details['Support Agent'] if self.account == 'WLK' else self.details['Support Analyst']
+        self.status = self.details['Status']
+        self.system = self.details['System'] if self.account == 'WLK' else self.details['Product']
+        self.priority = self.details['Severity'] if self.account == 'WLK' else self.details['Support Priority']
+        self.reason = self.details['Case Reason'] if self.account == 'WLK' else self.details['Type']
+        self._type = self.details['Type'] # this is not stored in the model, but is used in RSL estimation of SLA
+        self._reason = self.details['Case Reason'] # this is not stored in the model, but is used in RSL estimation of SLA
+        self.created = datetime.strptime(self.details['Date/Time Opened'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
+        try:
+            self.closed = datetime.strptime(self.details['Date/Time Closed'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
+        except ValueError:
+            self.closed = None
+
+        self.shift = self.determine_shift()
+        # section case history
+        self.support_time, self.response_time = self.parse_case_history_table(self.sections['case_history'])
+        self.response_sla = SLA_RESPONSE[self.account]
+        self.support_sla = self.determine_sla()
+
+        self.in_support_sla = self.support_time < self.support_sla
+        self.in_response_sla = self.response_time < self.response_sla
+        self.in_sla = self.in_support_sla and self.in_response_sla
+
+        result = self.fill_in_dict() # use the dict keys matching model attributes
+
+        # section case comments
+        comments_collector = CommentCollector(debug = self.debug)
+        self.comment_details = comments_collector._capture_comment_info(self.sections['case_comments'], result)
+
+        return result
+
+    def debug(self, *args, sep=' ', end='\n', destination=None):
+        if self.debug_flag:
+            if destination == 'file':
+                try:
+                    with open(self.temp_folder + args[1], 'w') as f:
+                        f.write(args[0])
+                except UnicodeEncodeError as e:
+                    with open(self.temp_folder + args[1], 'w', encoding = 'utf-8') as f:
+                        f.write(args[0])
+                    raise MyError('Unicode fail: ' + str(e))
+            else:
+                print(*args, sep=sep, end=end)
+
+    def _worktime_diffference(self, start, end):
+        self.debug('Start of period: ', start.strftime('%d/%m/%Y %H:%M'))
+        self.debug('End of period  : ', end.strftime('%d/%m/%Y %H:%M'))
+        day = timedelta(days=1)
+        hour = timedelta(hours=1)
+        if start.time() < dtime(SHIFT_TIMES['start']):
+            start.replace(hour=SHIFT_TIMES['start'])
+        if start.time() > dtime(SHIFT_TIMES['end']):
+            start.replace(hour=SHIFT_TIMES['start']) + timedelta(days=1)
+        if end.time() < dtime(SHIFT_TIMES['start']):
+            end.replace(hour=SHIFT_TIMES['end']) + timedelta(days=-1)
+        if end.time() > dtime(SHIFT_TIMES['end']):
+            end.replace(hour=SHIFT_TIMES['end'])
+        if start.date() != end.date():
+            delta_days = (end - start) // day # delta days (17 // 3 = 2)
+            transposed_end = end - timedelta(days=delta_days)
+            result = transposed_end - start + delta_days * timedelta(hours = SHIFT_TIMES['workhours']) #
+            self.debug('delta days:', str(delta_days))
+            self.debug('transposed end: ', transposed_end.strftime('%d/%m/%Y %H:%M'))
+            if transposed_end.date() != start.date():
+                result += timedelta(hours=-SHIFT_TIMES['non workhours'])
+        else:
+            result = end - start
+        self.debug('result : ' + str(result))
+        return round(result / hour, 2)
+
+    def split_case_sections(self):
+        CASE_STRUCTURE = {
+            'WLK': ['head', 'case_details', 'solutions', 'open_activities', 'activity_history', 'case_comments', 'case_history', 'attachments'],
+            'RSL': ['head', 'case_details', 'solutions', 'attachments', 'activity_history', 'open_activities', 'case_comments', 'case_history'],
+        }
+        sections = self.raw.split('<div class="pbHeader">')
+        sections = dict(zip(CASE_STRUCTURE[self.account], sections))
+        return sections
+
+    def parse_case_header_details(self, raw):
+        filtered = re.sub(r'</*br>', '\n', raw, 0, re.I)
+        # extraction of description is unique, because it may contain HTML tags -- we need to pull it befor we destroy the tags
+        description = re.findall(r'<div id="cas15_ileinner">(.+?)</div>', filtered, re.DOTALL)
+
+        filtered = re.sub(r'<[^>]*>','~',filtered)
+        box = [ z.strip() for z in filtered.split('~') if z != '' and not z.count('sfdcPage.setHelp') ]
+
+        items = ['Case Number', 'Contact Name', 'Case Owner', 'Contact Phone', 'System', 'Contact Email', 'Problem Type', 'Case Reason', '3rd Line Company', 'Support Agent', '3rd Party Case ID', 'Severity', 'Case Age In Business Hours', 'Response Date/Time', 'Time With Support', 'Time With Customer', 'Time with 3rd Party', 'Status', 'Type', 'Case Origin', 'Subject', 'Description', 'Resolution Description', 'Date/Time Opened', 'Date/Time Closed', 'Created By', 'Last Modified By', 'Priority', 'Account Name', 'Product', 'Version', 'Operating System', 'JVM Version', 'Guest Name', 'Database', 'Guest Email Address', 'Support Analyst', 'Support Priority', 'Resolution Reason', 'Resolution Time (Hours)', 'Defect Number', ]
+        details = { box[i]:box[i+1] for i in range(len(box)) if box[i] in items }
+        details['Description'] = description[0]
+        return details
+
+    def parse_case_history_table(self, html):
+        # if self.show_case_nums_during_execution:
+        #     print(self.number)
+        if html.count('Created.')==0:
+            raise MyError("Error: cant find 'Created.' in case %s (check the size of history table and increase ?rowsperlist=50)" % self.number)
+        self.debug("parse_case_history_table initiated with datetime_opened =", self.created)
+        history_table = siphon(html, '<span class="linkSpan">Case History Help', 'try { sfdcPage.registerRelatedList')
+        self.debug('history_table', history_table)
+        self.debug(history_table, 'sf_hist_table_of_case_' + self.link + '.html', destination = 'file')
+        history_table = re.compile(re.escape('Ready to Close'), re.IGNORECASE).sub('Ready_to_Close', history_table)
+        history_table = [ z.groupdict() for z in re.finditer(HISTORY_TABLE_MAPS[self.account], history_table) ]
+        for i in range(len(history_table)):
+            history_table[i] = dict([ (k, remove_html_tags(v)) for k,v in history_table[i].items() ])
+        # fill in missing dates & owners
+        for row in history_table:
+            if row['time'] == '&nbsp;':
+                row['time'] = last_stap
+            if row['owner'] == '&nbsp;':
+                row['owner'] = last_owner
+            last_stap = row['time']
+            last_owner = row['owner']
+            if row['action'].count(' to ') and (row['action'].count('Owner') or row['action'].count('Status')): # or row['action'].count('Case Reason')):
+                row['action'], row['to'] = row['action'].split(' to ')
+            else:
+                row['to'] = None
+        history_table = list(reversed(history_table))
+        support_time = 0.
+        response_time = 0.
+        # convert table from single time to with start & stop times && process
+        for i in range(len(history_table)):
+            history_table[i]['start'] = datetime.strptime(history_table[i]['time'], '%d/%m/%Y %H:%M')
+            if i != len(history_table) - 1:
+                history_table[i]['end'] = datetime.strptime(history_table[i+1]['time'], '%d/%m/%Y %H:%M')
+            else:
+                if self.status.count('Close'):
+                    history_table[i]['end'] = history_table[i]['start']
+                else:
+                    history_table[i]['end'] = datetime.now()
+            # calculate delta
+            history_table[i]['workhours_delta'] = self._worktime_diffference(history_table[i]['start'], history_table[i]['end']) # as float
+            # determine status & owner for the period
+            if i != 0: 
+                if history_table[i]['action'].count('Owner'):
+                    history_table[i]['owner'] = history_table[i]['to']
+                    history_table[i]['status'] = history_table[i-1]['status']
+                elif history_table[i]['action'].count('Status'):
+                    history_table[i]['owner'] = history_table[i-1]['owner']
+                    history_table[i]['status'] = history_table[i]['to']
+                else:
+                    history_table[i]['owner'] = history_table[i-1]['owner']
+                    history_table[i]['status'] = history_table[i-1]['status'] 
+                    ## there are 2 sub cases -- !!!
+                    # 1) the action is relevat status change without the "to" clause --- use current "action"
+                    # 2) the action has "to", but is irrelevant --- use the "status" from previous case
+                    ## Assuming that all important actions appart from 'Create' & 'Close' are noted with "to" clause
+                    if history_table[i-1]['action'].count('Create') or history_table[i]['action'].count('Close'):
+                        history_table[i]['status'] = history_table[i-1]['action']
+            else:
+                history_table[i]['status'] = history_table[i]['action']
+            # accumulate response time
+            if any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['response'] ]):
+                response_time += history_table[i]['workhours_delta']
+            # determine if status is counted towards support time, and accumulate
+            count_in_status = any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['work'] ])
+            count_in_owner  = history_table[i]['status'].count(SUPPORT_STATUSES[self.account]['owner'])
+            if count_in_status and count_in_owner:
+                support_time += history_table[i]['workhours_delta']
+        self.debug('Case %s: response time %.2f and support time: %.2fh ' % (self.link, response_time, support_time))
+        return support_time, response_time
+
+    def determine_shift(self):
+        # def resolve_shift_by_creation_time(possible_shift, created):
+        #     if created.hour < 12:
+        #         return min(shifts_that_time, key=lambda x: x.date)
+        #     else:
+        #         return max(shifts_that_time, key=lambda x: x.date)
+
+        # resolve_shift_by_creation_time = lambda possible_shift, created: min(shifts_that_time, key=lambda x: x.date) if created.hour < 12 else max(shifts_that_time, key=lambda x: x.date)
+
+        resolutor = min if self.created.hour < 12 else max
+        resolve_shift_by_creation_time = lambda shifts: resolutor(shifts, key=lambda x: x.date)
+
+        search_range = (self.created + timedelta(hours=-8), self.created + timedelta(minutes=10))
+        shifts_that_time = Shift.objects.filter(date__range=search_range)
+        if len(shifts_that_time) == 0: #expand into out of hours i.e OT
+            search_range = (self.created.replace(hour=0, minute=0), self.created.replace(hour=23, minute=59))
+            shifts_that_time = Shift.objects.filter(date__range=search_range)
+        possible_shift = [ z for z in shifts_that_time if self.agent_name.count(z.agent.name)]
+        if len(possible_shift) == 0 and len(shifts_that_time) > 0:
+            shift = resolve_shift_by_creation_time(shifts_that_time)
+            # if self.created.hour < 12:
+            #     shift = min(shifts_that_time, key=lambda x: x.date)
+            # else:
+            #     shift = max(shifts_that_time, key=lambda x: x.date)
+        elif len(possible_shift) == 0 and self.created < datetime(2010,4,21,tzinfo=TZI):
+            shift = None
+        elif len(possible_shift) == 1:
+            shift = possible_shift[0]
+        elif len(possible_shift) == 2:
+            shift = resolve_shift_by_creation_time(possible_shift)
+            # if self.created.hour < 12:
+            #     shift = min(possible_shift, key=lambda x: x.date)
+            # else:
+            #     shift = max(possible_shift, key=lambda x: x.date)
+        else:
+            # print('shifts', shifts_that_time)
+            # print('case created date', self.created)
+            # for sh in shifts_that_time:
+            #     print(sh)
+            # print()
+            raise MyError('more than 2 shifts for ' + self.agent_name + ' at time: ' + str(self.created))
+        
+        return shift
+
+    def determine_sla(self):
+        WLK_SLA_MAP = {
+            ('Ferry+', 'Local PC', 'Email', 'Wide Area Network', 'Sentinel', 'NiceLabel', 'CarRes'): {'1': 1, '2': 8, '3': 15 },
+            ('DRS', 'CDI', 'Blackberry Server'): {'1': 3, '2': 8, '3': 15, },
+            ('Profit Optimisation (RTS)', 'Great Plains', 'RPO', 'Intranet'): {'1': 4, '2': 8, '3': 15 },
+            ('CRM', 'Document Management', 'Sailing Statistics (AIS)'): {'1': 8, '2': 15, '3': 22 }
+        }
+        RSL_SLA_MAP = { # the _ indicates the variable names match the name of SFDC.RSL field, and not the model names
+            '_reason' : {'License Request': 2},
+            '_type': {'Question': 8, 'Problem': 16, 'Feature Request': 9999, } 
+        }
+        support_sla = -1 # undefined
+        if self.account == 'WLK':
+            for sla_key in WLK_SLA_MAP.keys():
+                if self.system in sla_key:
+                    support_sla = WLK_SLA_MAP[sla_key][self.priority[-1]]
+        else:
+            if self._reason in RSL_SLA_MAP['_reason'].keys():
+                support_sla = RSL_SLA_MAP['_reason'][self._reason] # overwrite by case reason
+            if self._type in RSL_SLA_MAP['_type'].keys():
+                support_sla = RSL_SLA_MAP['_type'][self._type] # overwrite by "problem" i.e. the field "Type" in SFDC
+
+        if support_sla == -1:
+            safe_print('Error determining SLA for case %s in %s' % (self.number, self.account))
+            # raise MyError('Error determining SLA for case %s in %s' % (self.number, self.account))
+        return support_sla
+
+    def fill_in_dict(self):
+
+        unused_items = ['', '', 'Case Owner', '', '', '', 'Problem Type', '', '3rd Line Company',
+         '', '3rd Party Case ID', '', 'Case Age In Business Hours', 'Response Date/Time', 'Time With Support', 'Time With Customer', 'Time with 3rd Party',
+          '', '', 'Case Origin', '', '', 'Resolution Description', '', '', 'Created By', 'Last Modified By', 'Priority',
+           'Account Name', '', 'Version', 'Operating System', 'JVM Version', 'Guest Name', 'Database', 'Guest Email Address', '', '', 'Resolution Reason',
+            'Resolution Time (Hours)', 'Defect Number', ]
+
+        if self.shift:
+            creator = self.shift.agent
+        else:
+            creator = None
+
+        result = {
+            'number': self.details['Case Number'],
+            'status': self.details['Status'],
+            'subject': self.details['Subject'],
+            'description': self.details['Description'],
+            'sfdc': self.account,
+            'created': self.created, #Date/Time Opened
+            'closed': self.closed, #Date/Time Closed
+            'system': self.system, # System || Product
+            'priority': self.priority, # Severity || Support Priority
+            'reason': self.reason, # Case Reason || Type
+            'contact': str(tuple([self.details['Contact Name'], self.details['Contact Phone'], self.details['Contact Email']])), ### to implement 'Contact Name', 'Contact Phone', 'Contact Email',
+            'link': self.link, # self.link
+            'shift': self.shift, # self.shift  << #Date/Time Opened && Support Agent || Support Analyst
+            'creator': creator, # 
+            'in_support_sla': self.in_support_sla, 'in_response_sla': self.in_response_sla, 'support_sla': self.support_sla, 'response_sla': self.response_sla,
+            'support_time': self.support_time, 'response_time': self.response_time,
+            'raw': '',
+            # 'postpone', 'target_chase', 'chased'  ## these are appended by the Comments method
+        }
+
+        return result
+
+        # items = [
+        #     'Case Number', # number = models.CharField(max_length=4) #id
+        #     'Contact Name', # contact =  models.CharField(max_length=64) #===name #only the name for now...
+        #     'Case Owner', 
+        #     'Contact Phone', # 
+        #     'System', 
+        #     'Contact Email',
+        #     'Problem Type',
+        #     'Case Reason',
+        #     '3rd Line Company',
+        #     'Support Agent', ****
+        #     '3rd Party Case ID',
+        #     'Severity',
+        #     'Case Age In Business Hours',
+        #     'Response Date/Time',
+        #     'Time With Support',
+        #     'Time With Customer',
+        #     'Time with 3rd Party',
+        #     'Status',
+        #     'Type',
+        #     'Case Origin',
+        #     'Subject',  # subject = models.CharField(max_length=1024) #subject
+        #     'Description', # description = models.TextField() #problem
+        #     'Resolution Description',
+        #     'Date/Time Opened', **
+        #     'Date/Time Closed', **
+        #     'Created By',
+        #     'Last Modified By',
+        #     'Priority',
+        #     'Account Name',
+        #     'Product',
+        #     'Version',
+        #     'Operating System',
+        #     'JVM Version',
+        #     'Guest Name',
+        #     'Database',
+        #     'Guest Email Address',
+        #     'Support Analyst', ****
+        #     'Support Priority',
+        #     'Resolution Reason',
+        #     'Resolution Time (Hours)',
+        #     'Defect Number',
+        # ]
+
+    
+    
+    
+    
+
+
+
+
+    
+
+
+    # def _captute_common_case_details(self, html, results):
+    #     if 'contact' not in results.keys():
+    #         contact_matches = re.findall(r'<a href="(.+?)" .+?>(.+?)</a>', siphon(html, 'Contact Name</td>', '</td>'))
+    #         if len(contact_matches) > 0:
+    #             results['contact'] = contact_matches[0]
+    #         else:
+    #             results['contact'] = siphon(html, 'Guest Name</td>', '</td>')
+
+    #     if 'subject'  not in results.keys():
+    #         results['subject'] = remove_html_tags(siphon(html, 'Subject</td>', '</td>'))
+    #     if 'number'  not in results.keys():
+    #         results['number'] = remove_html_tags(siphon(html, 'Case Number</td>', '</td>'))
+    #     if 'status'  not in results.keys():
+    #         results['status'] = remove_html_tags(siphon(html, 'Status</td>', '</td>'))
+    #     if 'created' not in results.keys():
+    #         results['created'] = remove_html_tags(siphon(html, 'Date/Time Opened</td>', '</td>'))
+            
+    #     results['closed'] = siphon(html,'ClosedDate_ileinner">','</div>')
+    #     if results['closed'] == '&nbsp;':
+    #         results['closed'] = None
+    #     else:
+    #         results['closed'] = datetime.strptime(results['closed'], '%d/%m/%Y %H:%M')
+    #         results['closed'] = results['closed'].replace(tzinfo = TZI)
+    #     results['description'] = remove_html_tags(siphon(html, 'Description</td>', '</td>'))
+    #     results['response_sla'] = SLA_RESPONSE[self.account]
+    #     analyst = remove_html_tags(siphon(html, 'Support Analyst</td>', '</div></td>'))
+    #     if isinstance(results['created'], str):
+    #         results['created'] = datetime.strptime(results['created'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
+
+    #     results['reason'] = siphon(html, '<div id="cas6_ileinner">', '</div>')
+    #     return results
+
+    # def _capture_WLK_case_details(self, html, results):
+    #     results['priority'] = re.search(r'Severity ([123])', html).group(1)
+    #     if 'system' not in results.keys():
+    #         results['system'] = siphon(html, '<div id="00N200000023Rfa_ileinner">', '</div>')
+    #     for sla_key in SLA_MAP['WLK'].keys():
+    #         if results['system'] in sla_key:
+    #             results['support_sla'] = SLA_MAP['WLK'][sla_key][results['priority']]
+    #     if not results['support_sla']:
+    #         raise MyError('Unknown system: %s (Case: %s)' % (new_records['system'], new_records['number']))
+    #     return results
+
+    # def _capture_RSL_case_details(self, html, results):
+    #     results['priority'] = siphon(html, '<div id="00N20000000uIvK_ileinner">', '</div>')
+    #     results['system'] = siphon(html, '<div id="00N20000000uG6j_ileinner">', '</div>')
+    #     results['problem'] = siphon(html, '<div id="cas5_ileinner">', '</div>')
+    #     results['support_sla'] = -1 # undefined
+    #     if results['reason'] in SLA_MAP['RSL']['reason'].keys():
+    #         results['support_sla'] = SLA_MAP['RSL']['reason'][results['reason']] # overwrite by case reason
+    #     if results['problem'] in SLA_MAP['RSL']['problem'].keys():
+    #         results['support_sla'] = SLA_MAP['RSL']['problem'][results['problem']] # overwrite by problem
+    #     return results
+
+    # def parse_case_details(self, html, record, sfdc = None):
+    #     if sfdc:
+    #         target_sfdc = sfdc
+    #     else:
+    #         target_sfdc = self.account
+    #     results = record
+    #     results = self._captute_common_case_details(html, results)
+    #     if target_sfdc == 'WLK':
+    #         results = self._capture_WLK_case_details(html, results)
+    #     elif target_sfdc == 'RSL':
+    #         results = self._capture_RSL_case_details(html, results)
+    #     else:
+    #         raise MyError("unknown SFCD target_sfdc: %s" % target_sfdc)
+    #     results = self.comments_collector._capture_comment_info(html, results)
+    #     return results
+
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+    
 
 class CaseCollector:
     def __init__(self, debug = None, account = 'WLK'):
@@ -195,6 +601,7 @@ class CaseCollector:
     def clear_bad_chars(self, text):
         # KILL BAD UNICODE
         BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d',  ]
+        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d', '©', '“' ]
         for bc in BAD_CHARS:
             text = text.replace(bc, '')
         # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
@@ -205,49 +612,6 @@ class CaseCollector:
         return text
         # ok - tied the following and it errored on char: '\\u200b'
         # return smart_text(text, encoding='utf-8', strings_only=False, errors='strict')
-
-    def load_pickle(self):
-        try:
-            self.records = pickle.load(open(self.pickledir + self.account + '_casebox.pickle', 'rb'))
-            self.debug('the pickled data has', len(self.records), 'case records')
-            self.load_len = self.end_len = len(self.records)
-        except IOError as e:
-            self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
-
-    def save_pickle(self):
-        try:
-            pickle.dump(self.records, open(self.pickledir + self.account + '_casebox.pickle', 'wb' ))
-            self.debug('the pickled data has', len(self.records), 'case records')
-            return True
-        except IOError as e:
-            self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
-            return False
-    
-    def _worktime_diffference(self, start, end):
-        self.debug('Start of period: ', start.strftime('%d/%m/%Y %H:%M'))
-        self.debug('End of period  : ', end.strftime('%d/%m/%Y %H:%M'))
-        day = timedelta(days=1)
-        hour = timedelta(hours=1)
-        if start.time() < dtime(SHIFT_TIMES['start']):
-            start.replace(hour=SHIFT_TIMES['start'])
-        if start.time() > dtime(SHIFT_TIMES['end']):
-            start.replace(hour=SHIFT_TIMES['start']) + timedelta(days=1)
-        if end.time() < dtime(SHIFT_TIMES['start']):
-            end.replace(hour=SHIFT_TIMES['end']) + timedelta(days=-1)
-        if end.time() > dtime(SHIFT_TIMES['end']):
-            end.replace(hour=SHIFT_TIMES['end'])
-        if start.date() != end.date():
-            delta_days = (end - start) // day # delta days (17 // 3 = 2)
-            transposed_end = end - timedelta(days=delta_days)
-            result = transposed_end - start + delta_days * timedelta(hours = SHIFT_TIMES['workhours']) #
-            self.debug('delta days:', str(delta_days))
-            self.debug('transposed end: ', transposed_end.strftime('%d/%m/%Y %H:%M'))
-            if transposed_end.date() != start.date():
-                result += timedelta(hours=-SHIFT_TIMES['non workhours'])
-        else:
-            result = end - start
-        self.debug('result : ' + str(result))
-        return round(result / hour, 2)
 
     def save_resolution_time(u,card,smin_str):
         pass
@@ -271,176 +635,24 @@ class CaseCollector:
     #     udata = connection.sfcall('https://emea.salesforce.com'+card['link']) #https://emea.salesforce.com/5002000000DjMtk/
     #     return udata
 
-    def parse_case_history_table(self, html, record): #, zlink):
-        if self.show_case_nums_during_execution:
-            print(record['number'])
-        if html.count('Created.')==0:
-            raise MyError("Error: cant find 'Created.' in case %s (check the size of history table and increase ?rowsperlist=50)" % record['number'])
-        self.debug("parse_case_history_table initiated with datetime_opened =", record['created'])
-        history_table = siphon(html, '<span class="linkSpan">Case History Help', 'try { sfdcPage.registerRelatedList')
-        self.debug('history_table', history_table)
-        self.debug(history_table, 'sf_hist_table_of_case_' + record['number'] + '.html', destination = 'file')
-        history_table = re.compile(re.escape('Ready to Close'), re.IGNORECASE).sub('Ready_to_Close', history_table)
-        history_table = [ z.groupdict() for z in re.finditer(HISTORY_TABLE_MAPS[self.account], history_table) ]
-        for i in range(len(history_table)):
-            history_table[i] = dict([ (k, remove_html_tags(v)) for k,v in history_table[i].items() ])
-        # fill in missing dates & owners
-        for row in history_table:
-            if row['time'] == '&nbsp;':
-                row['time'] = last_stap
-            if row['owner'] == '&nbsp;':
-                row['owner'] = last_owner
-            last_stap = row['time']
-            last_owner = row['owner']
-            if row['action'].count(' to ') and (row['action'].count('Owner') or row['action'].count('Status')): # or row['action'].count('Case Reason')):
-                row['action'], row['to'] = row['action'].split(' to ')
-            else:
-                row['to'] = None
-        history_table = list(reversed(history_table))
-        support_time = 0.
-        response_time = 0.
-        # convert table from single time to with start & stop times && process
-        for i in range(len(history_table)):
-            history_table[i]['start'] = datetime.strptime(history_table[i]['time'], '%d/%m/%Y %H:%M')
-            if i != len(history_table) - 1:
-                history_table[i]['end'] = datetime.strptime(history_table[i+1]['time'], '%d/%m/%Y %H:%M')
-            else:
-                if record['status'].count('Close'):
-                    history_table[i]['end'] = history_table[i]['start']
-                else:
-                    history_table[i]['end'] = datetime.now()
-            # calculate delta
-            history_table[i]['workhours_delta'] = self._worktime_diffference(history_table[i]['start'], history_table[i]['end']) # as float
-            # determine status & owner for the period
-            if i != 0: 
-                if history_table[i]['action'].count('Owner'):
-                    history_table[i]['owner'] = history_table[i]['to']
-                    history_table[i]['status'] = history_table[i-1]['status']
-                elif history_table[i]['action'].count('Status'):
-                    history_table[i]['owner'] = history_table[i-1]['owner']
-                    history_table[i]['status'] = history_table[i]['to']
-                else:
-                    history_table[i]['owner'] = history_table[i-1]['owner']
-                    history_table[i]['status'] = history_table[i-1]['status'] 
-                    ## there are 2 sub cases -- !!!
-                    # 1) the action is relevat status change without the "to" clause --- use current "action"
-                    # 2) the action has "to", but is irrelevant --- use the "status" from previous case
-                    ## Assuming that all important actions appart from 'Create' & 'Close' are noted with "to" clause
-                    if history_table[i-1]['action'].count('Create') or history_table[i]['action'].count('Close'):
-                        history_table[i]['status'] = history_table[i-1]['action']
-            else:
-                history_table[i]['status'] = history_table[i]['action']
-            # accumulate response time
-            if any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['response'] ]):
-                response_time += history_table[i]['workhours_delta']
-            # determine if status is counted towards support time, and accumulate
-            count_in_status = any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['work'] ])
-            count_in_owner  = history_table[i]['status'].count(SUPPORT_STATUSES[self.account]['owner'])
-            if count_in_status and count_in_owner:
-                support_time += history_table[i]['workhours_delta']
-        self.debug('Case %s: response time %.2f and support time: %.2fh ' % (record['number'], response_time, support_time))
-        return support_time, response_time
+    def load_pickle(self):
+        try:
+            self.records = pickle.load(open(self.pickledir + self.account + '_casebox.pickle', 'rb'))
+            self.debug('the pickled data has', len(self.records), 'case records')
+            self.load_len = self.end_len = len(self.records)
+        except IOError as e:
+            self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
 
-    def _captute_common_case_details(self, html, results):
-        if 'contact' not in results.keys():
-            contact_matches = re.findall(r'<a href="(.+?)" .+?>(.+?)</a>', siphon(html, 'Contact Name</td>', '</td>'))
-            if len(contact_matches) > 0:
-                results['contact'] = contact_matches[0]
-            else:
-                results['contact'] = siphon(html, 'Guest Name</td>', '</td>')
-
-        if 'subject'  not in results.keys():
-            results['subject'] = remove_html_tags(siphon(html, 'Subject</td>', '</td>'))
-        if 'number'  not in results.keys():
-            results['number'] = remove_html_tags(siphon(html, 'Case Number</td>', '</td>'))
-        if 'status'  not in results.keys():
-            results['status'] = remove_html_tags(siphon(html, 'Status</td>', '</td>'))
-        if 'created' not in results.keys():
-            results['created'] = remove_html_tags(siphon(html, 'Date/Time Opened</td>', '</td>'))
-            
-        results['closed'] = siphon(html,'ClosedDate_ileinner">','</div>')
-        if results['closed'] == '&nbsp;':
-            results['closed'] = None
-        else:
-            results['closed'] = datetime.strptime(results['closed'], '%d/%m/%Y %H:%M')
-            results['closed'] = results['closed'].replace(tzinfo = timezone.get_default_timezone())
-        results['description'] = remove_html_tags(siphon(html, 'Description</td>', '</td>'))
-        results['response_sla'] = SLA_RESPONSE[self.account]
-        analyst = remove_html_tags(siphon(html, 'Support Analyst</td>', '</div></td>'))
-        if isinstance(results['created'], str):
-            results['created'] = datetime.strptime(results['created'], '%d/%m/%Y %H:%M').replace(tzinfo=timezone.get_default_timezone())
-        search_range = (results['created'] + timedelta(hours=-8), results['created'] + timedelta(minutes=10))
-        shifts_that_time = Shift.objects.filter(date__range=search_range)
-        if len(shifts_that_time) == 0: #expand into out of hours i.e OT
-            search_range = (results['created'].replace(hour=0, minute=0), results['created'].replace(hour=23,minute=59))
-            shifts_that_time = Shift.objects.filter(date__range=search_range)
-        possible_shift = [ z for z in shifts_that_time if analyst.count(z.agent.name)]
-        if len(possible_shift) == 0 and len(shifts_that_time) > 0:
-            if results['created'].hour < 12:
-                results['shift'] = min(shifts_that_time, key=lambda x: x.date)
-            else:
-                results['shift'] = max(shifts_that_time, key=lambda x: x.date)
-        elif len(possible_shift) == 0 and results['created'] < datetime(2010,4,21,tzinfo=timezone.get_default_timezone()):
-            results['shift'] = None
-        elif len(possible_shift) == 1:
-            results['shift'] = possible_shift[0]
-        elif len(possible_shift) == 2:
-            if results['created'].hour < 12:
-                results['shift'] = min(possible_shift, key=lambda x: x.date)
-            else:
-                results['shift'] = max(possible_shift, key=lambda x: x.date)
-        else:
-            print('shifts', shifts_that_time)
-            print('case created date', results['created'])
-            for sh in shifts_that_time:
-                print(sh)
-            print()
-            raise MyError('more than 2 matching shifts for time: ' + str(results['created']))
-        if results['shift']:
-            results['creator'] = results['shift'].agent
-        else:
-            results['creator'] = None
-
-        results['reason'] = siphon(html, '<div id="cas6_ileinner">', '</div>')
-        return results
-
-    def _capture_WLK_case_details(self, html, results):
-        results['priority'] = re.search(r'Severity ([123])', html).group(1)
-        if 'system' not in results.keys():
-            results['system'] = siphon(html, '<div id="00N200000023Rfa_ileinner">', '</div>')
-        for sla_key in SLA_MAP['WLK'].keys():
-            if results['system'] in sla_key:
-                results['support_sla'] = SLA_MAP['WLK'][sla_key][results['priority']]
-        if not results['support_sla']:
-            raise MyError('Unknown system: %s (Case: %s)' % (new_records['system'], new_records['number']))
-        return results
-
-    def _capture_RSL_case_details(self, html, results):
-        results['priority'] = siphon(html, '<div id="00N20000000uIvK_ileinner">', '</div>')
-        results['system'] = siphon(html, '<div id="00N20000000uG6j_ileinner">', '</div>')
-        results['problem'] = siphon(html, '<div id="cas5_ileinner">', '</div>')
-        results['support_sla'] = -1 # undefined
-        if results['reason'] in SLA_MAP['RSL']['reason'].keys():
-            results['support_sla'] = SLA_MAP['RSL']['reason'][results['reason']] # overwrite by case reason
-        if results['problem'] in SLA_MAP['RSL']['problem'].keys():
-            results['support_sla'] = SLA_MAP['RSL']['problem'][results['problem']] # overwrite by problem
-        return results
-
-    def parse_case_details(self, html, record, sfdc = None):
-        if sfdc:
-            target_sfdc = sfdc
-        else:
-            target_sfdc = self.account
-        results = record
-        results = self._captute_common_case_details(html, results)
-        if target_sfdc == 'WLK':
-            results = self._capture_WLK_case_details(html, results)
-        elif target_sfdc == 'RSL':
-            results = self._capture_RSL_case_details(html, results)
-        else:
-            raise MyError("unknown SFCD target_sfdc: %s" % target_sfdc)
-        results = self.comments_collector._capture_comment_info(html, results)
-        return results
+    def save_pickle(self):
+        try:
+            pickle.dump(self.records, open(self.pickledir + self.account + '_casebox.pickle', 'wb' ))
+            self.debug('the pickled data has', len(self.records), 'case records')
+            return True
+        except IOError as e:
+            self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
+            return False
+    
+    
     
     def view_page_table_parse(self, page):
         maps = []
@@ -496,7 +708,7 @@ class CaseCollector:
         upto_page = 999
         earliest_date = timezone.now()
         if not target_time:
-            goal_time = datetime(2010, 1, 1, tzinfo = timezone.get_default_timezone())
+            goal_time = datetime(2010, 1, 1, tzinfo = TZI)
         else:
             goal_time = target_time
         # for page_index in range(1, upto_page):
@@ -516,7 +728,7 @@ class CaseCollector:
             if not target_time:
                 upto_page = (int(siphon(html, '"totalRowCount":', ',')) // int(self.num_records_to_pull)) + 1
             earliest_date = datetime.strptime(re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"],".+?":', html)[0], '%d/%m/%Y %H:%M')
-            earliest_date = earliest_date.replace(tzinfo = timezone.get_default_timezone())
+            earliest_date = earliest_date.replace(tzinfo = TZI)
         return pages
     
     def open_connection(self, sfdc = None):
@@ -553,24 +765,27 @@ class CaseCollector:
             print('len', len(new_records))
         records = {}
         for k in sorted(new_records.keys()):
-            new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=timezone.get_default_timezone())
+            new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
             # if not target_time or ('closed' in new_records[k].keys() and new_records[k]['closed'] > target_time) or new_records[k]['created'] > target_time:
             ###
             #### the above is correct idea, but to work it needs more, as the list of cases is already filtered by page_loading
             #### ideally we want to know cases that were already opened at the target_time -- these will have current state either still open, or have close between target time and now
             ###
             if not target_time or new_records[k]['created'] > target_time:
-                html = self.pull_one_case(connection, new_records[k]['link'])
-                html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
-                if self.write_raw:
-                    new_records[k]['raw'] = html # !!! scary - should zip it
-                else:
-                    new_records[k]['raw'] = ''
-                new_records[k] = self.parse_case_details(html, new_records[k])
-                new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
-                new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
-                new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
-                new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
+
+                new_records[k] = self.load_one(new_records[k]['link'], self.account)
+
+                # html = self.pull_one_case(connection, new_records[k]['link'])
+                # html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
+                # if self.write_raw:
+                #     new_records[k]['raw'] = html # !!! scary - should zip it
+                # else:
+                #     new_records[k]['raw'] = ''
+                # new_records[k] = self.parse_case_details(html, new_records[k])
+                # new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
+                # new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
+                # new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
+                # new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
                 # ----- PROCESS RESOLUTION TIME IN SF -----
                 if self.account == 'RSL' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
                     print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
@@ -589,21 +804,54 @@ class CaseCollector:
     #     self.new_len = len(new_records)
     #     self.end_len = len(self.records) # != new + load because of merge
 
+    # def load_one(self, link, sfdc):
+    #     connection = self.open_connection(sfdc)
+    #     html = self.pull_one_case(connection, link, sfdc)
+    #     html = self.clear_bad_chars(html)
+    #     result = {'sfdc': sfdc, 'link': link}
+    #     # raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
+    #     if self.write_raw:
+    #         result['raw'] = html # !!! scary - should zip it
+    #     else:
+    #         result['raw'] = ''
+    #     result = self.parse_case_details(html, result, sfdc)
+    #     # result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
+    #     # result['in_support_sla'] = result['support_time'] < result['support_sla']
+    #     # result['in_response_sla'] = result['response_time'] < result['response_sla']
+    #     # result['in_sla'] = result['in_support_sla'] and result['in_response_sla']
+
+    #     case = CaseObject(number, html)
+    #     result = case.return_model
+
+    #     # ----- PROCESS RESOLUTION TIME IN SF -----
+    #     if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
+    #         safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
+    #         new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
+    #         if self.write_raw:
+    #             result['raw'] = new_html
+    #     # ----- END OF WRITING RESOLUTION TIME IN SF -----
+    #     connection.handle.close()
+    #     return result
+
+
     def load_one(self, link, sfdc):
         connection = self.open_connection(sfdc)
         html = self.pull_one_case(connection, link, sfdc)
         html = self.clear_bad_chars(html)
-        result = {'sfdc': sfdc, 'link': link}
-        # raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
-        if self.write_raw:
-            result['raw'] = html # !!! scary - should zip it
-        else:
-            result['raw'] = ''
-        result = self.parse_case_details(html, result, sfdc)
-        result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
-        result['in_support_sla'] = result['support_time'] < result['support_sla']
-        result['in_response_sla'] = result['response_time'] < result['response_sla']
-        result['in_sla'] = result['in_support_sla'] and result['in_response_sla']
+        # result = {'sfdc': sfdc, 'link': link}
+        # # raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
+        # if self.write_raw:
+        #     result['raw'] = html # !!! scary - should zip it
+        # else:
+        #     result['raw'] = ''
+        # result = self.parse_case_details(html, result, sfdc)
+        # result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
+        # result['in_support_sla'] = result['support_time'] < result['support_sla']
+        # result['in_response_sla'] = result['response_time'] < result['response_sla']
+        # result['in_sla'] = result['in_support_sla'] and result['in_response_sla']
+
+        result = CaseObject(sfdc, link, html).process()
+
         # ----- PROCESS RESOLUTION TIME IN SF -----
         if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
             safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
@@ -623,7 +871,7 @@ class CaseCollector:
             for field in fields:
                 if type(field) == datetime:
                     field = field.strftime("%d/%m/%y %H:%M")
-            # case_time = timezone.make_aware(case.date, timezone.get_default_timezone())
+            # case_time = timezone.make_aware(case.date, TZI)
             return fields
 
         find = Case.objects.all()

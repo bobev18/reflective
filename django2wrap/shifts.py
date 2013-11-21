@@ -6,8 +6,6 @@ from django2wrap.models import Agent, Shift, Resource
 from django.db import connection
 from django.conf import settings
 
-PICKLE_PATHFILE = 'shiftsdata'
-
 class MyError(Exception):
     def __init__(self, value):
         self.value = value

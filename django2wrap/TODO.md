@@ -1,10 +1,11 @@
  * Branch and test
    - Django 1.6 - official release = IN PROGRESS
    - MySQL connectors = DONE
- * Complete The Django Book
+ * Complete The Django Book = DONE
  * Refactoring
    - TDD
    - data consistency (tools)
+     ~ linking to single DB is a start
    - improve speed (i.e. more strict filtration on periods)
    - post support times to the RSL SFDC
  * Weekly
