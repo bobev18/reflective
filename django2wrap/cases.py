@@ -111,7 +111,7 @@ SUPPORT_STATUSES = {
     'WLK': { 'response': ['Created', 'New'], 'work': ['Created', 'New', 'In Progress', 'Responded', ], 'owner': 'Wightlink Support Team' },
     'RSL' : { 'owner': 'Support', 'response': ['Created', 'New'], 'work': ['Created', 'New', 'Responded', 'Working on Resolution',] } # , 'Working on L2 Resolution'] }
 } 
-MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'raw', 'postpone', 'target_chase', 'chased' ]
+MODEL_ARG_LIST = ['number', 'status', 'subject', 'description', 'sfdc', 'created', 'closed', 'system', 'priority', 'reason', 'contact', 'link', 'shift', 'creator', 'in_support_sla', 'in_response_sla', 'support_sla', 'response_sla', 'support_time', 'response_time', 'postpone', 'target_chase', 'chased' ]
 def p(*args, sep=' ', end='\n' ):
     sep = sep.encode('utf8')
     end = end.encode('utf8')
@@ -424,11 +424,147 @@ class CaseObject:
             'creator': creator, # 
             'in_support_sla': self.in_support_sla, 'in_response_sla': self.in_response_sla, 'support_sla': self.support_sla, 'response_sla': self.response_sla,
             'support_time': self.support_time, 'response_time': self.response_time,
-            'raw': '',
+            # 'raw': '',
             # 'postpone', 'target_chase', 'chased'  ## these are appended by the Comments method
         }
-
         return result
+
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+    
+class CaseWebConnector
+    def __init__(self, link, sfdc):
+        self.link = link
+        self.sfdc = sfdc
+        self.write_resolution_time_to_SF = False
+
+    def load(self):
+        connection = self._open_connection(self.sfdc)
+        connection.handle.setref(URLS[sfdc]['case_ref'])
+        html = connection.sfcall(self.link.join(URLS[sfdc]['case_url']))
+        if html.count('Data Not Available'):
+            raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.sfdc, self.link))
+        html = self._clear_bad_chars(html)
+        result = CaseObject(self.sfdc, self.link, html).process()
+
+        # ----- INVOKE WRITE RESOLUTION TIME IN SF -----
+        if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
+            safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
+            new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
+        # ----- END OF WRITE RESOLUTION TIME IN SF -----
+
+        connection.handle.close()
+        return result
+        
+    def _clear_bad_chars(self, text):
+        # KILL BAD UNICODE
+        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d',  ]
+        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d', '©', '“' ]
+        for bc in BAD_CHARS:
+            text = text.replace(bc, '')
+        # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
+        # I think I need to have the encoding specified during the urllib2.read( ) === myweb3
+        # REGULAR CLEANS
+        text = text.replace('u003C', '<')
+        text = text.replace('u003E', '>')
+        return text
+        # ok - tied the following and it errored on char: '\\u200b'
+        # return smart_text(text, encoding='utf-8', strings_only=False, errors='strict')
+
+    def _open_connection(self, sfdc = None):
+        if not sfdc:
+            sfdc = self.account
+        try:
+            os.remove(self.temp_folder + sfdc + '_sfcookie.pickle')   # WHY ????
+        except OSError:
+            pass
+        cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
+        connection = sfuser(cheat[sfdc])
+        connection.setdir(self.temp_folder)
+        connection.setdebug(self.myweb_module_debug)
+        connection.sflogin()
+        return connection
+
+    def save_resolution_time(u,card,smin_str):
+        pass
+    #     if card['id'].count('1692')>0:
+    #         execute = 1
+    #     else:
+    #         execute = 0
+    #     execute = 1 ## there is "self.write_resolution_time_to_SF", but this is a local control, which is used in rare cases
+    #     print('Saving resolution time for case',card['id'],'with value:',smin_str)
+    #     #call (8) # open for edit
+    #     connection.handle.setref('https://emea.salesforce.com'+card['link'])
+    #     dump = connection.sfcall('https://emea.salesforce.com'+card['link']+'/e?retURL='+card['link']) #https://emea.salesforce.com/5002000000DjMtk/e?retURL=%2F5002000000DjMtk
+    #     # we can attempt a save with only the support time?
+    #     #call (9) # save the edit
+    #     connection.handle.setdata('00N20000002fOrV='+smin_str+'&save=Saving...')
+    #     if execute:
+    #         dump = connection.sfcall('https://emea.salesforce.com'+card['link']+'/e') #https://emea.salesforce.com/5002000000DjMtk/e
+    #         #dump = rez[1] # could be used for verification ?!
+    #     # use call(10) to pull and verify ???
+    #     connection.handle.setdata(None)
+    #     udata = connection.sfcall('https://emea.salesforce.com'+card['link']) #https://emea.salesforce.com/5002000000DjMtk/
+    #     return udata
+
+# ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+
+class CaseDBConnector
+    def __init__(self, target = None):
+        self.target = target
+
+    def load(self):
+        if self.target:
+            
+        
+    def save(self, target):
+        if self.target:
+            self.update(data)       #   skips fields missing in data
+            # or
+            # self.overwrite(data)  # deletes fields missing in data
+        else:
+            self.create(data)
+        
+    def create(self, data):
+        filtered_data = dict([ (k, records[case][k],) for k in MODEL_ARG_LIST ])
+        if filtered_data['creator'] == None or filtered_data['shift'] == None:
+            if filtered_data['created'] < datetime(2010,4,21,0,0,0,0,TZI):
+                # happens for cases prior to 21.Apr.2010 ; They fall in the list because during load we apply target_date restriction to pages and not to cases.
+                ## TODO fix this.
+                print('skipping case', case, 'details', row)
+            else:
+                raise MyError("trying to save case without shift or creator; Has data: %s" % data)
+        else:
+            p = Case(**row)
+            p.save()
+            self.comments_collector.save_comments(records[case]['comments'], p)
+
+    def update(self, data):
+        # skips fields missing in data
+        for k in MODEL_ARG_LIST:
+            setattr(self.target, k, data[k])
+        case.save()
+        self.comments_collector.sync_comments(new_data['comments'], case) # sync comments of existing case
+
+    def overwrite(self, data):
+        pass
+
+
+        # if sfdc and isinstance(target, str) and target.isdigit():
+        #     self.target_case = Case.objects.get(number = number, sfdc = sfdc)
+        # elif isinstance(target, Case):
+        #     self.target_case = target
+        # else:
+        #     raise MyError('method update_one accepts as arguments string for the case number and string for the sfdc account, or single argument of class Case')
+        new_case_data = self.load_one(target.link, target.sfdc)
+        self.sync_one(target, new_case_data)
+        return new_case_data
+
+
+
+
+    # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+    # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+    # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 
         # items = [
         #     'Case Number', # number = models.CharField(max_length=4) #id
@@ -558,6 +694,7 @@ class CaseObject:
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
+
     
 
 class CaseCollector:
@@ -583,7 +720,7 @@ class CaseCollector:
         ## ..................................................................................... ##
         self.show_case_nums_during_execution = 1
         ## ..................................................................................... ##
-        self.write_raw = 0
+        # self.write_raw = 0
         ## ..................................................................................... ##
         self.pickledir = settings.LOCATION_PATHS['pickle_folder']
         ## ..................................................................................... ##
@@ -605,42 +742,7 @@ class CaseCollector:
             else:
                 print(*args, sep=sep, end=end)
 
-    def clear_bad_chars(self, text):
-        # KILL BAD UNICODE
-        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d',  ]
-        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d', '©', '“' ]
-        for bc in BAD_CHARS:
-            text = text.replace(bc, '')
-        # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
-        # I think I need to have the encoding specified during the urllib2.read( ) === myweb3
-        # REGULAR CLEANS
-        text = text.replace('u003C', '<')
-        text = text.replace('u003E', '>')
-        return text
-        # ok - tied the following and it errored on char: '\\u200b'
-        # return smart_text(text, encoding='utf-8', strings_only=False, errors='strict')
-
-    def save_resolution_time(u,card,smin_str):
-        pass
-    #     if card['id'].count('1692')>0:
-    #         execute = 1
-    #     else:
-    #         execute = 0
-    #     execute = 1 ## there is "self.write_resolution_time_to_SF", but this is a local control, which is used in rare cases
-    #     print('Saving resolution time for case',card['id'],'with value:',smin_str)
-    #     #call (8) # open for edit
-    #     connection.handle.setref('https://emea.salesforce.com'+card['link'])
-    #     dump = connection.sfcall('https://emea.salesforce.com'+card['link']+'/e?retURL='+card['link']) #https://emea.salesforce.com/5002000000DjMtk/e?retURL=%2F5002000000DjMtk
-    #     # we can attempt a save with only the support time?
-    #     #call (9) # save the edit
-    #     connection.handle.setdata('00N20000002fOrV='+smin_str+'&save=Saving...')
-    #     if execute:
-    #         dump = connection.sfcall('https://emea.salesforce.com'+card['link']+'/e') #https://emea.salesforce.com/5002000000DjMtk/e
-    #         #dump = rez[1] # could be used for verification ?!
-    #     # use call(10) to pull and verify ???
-    #     connection.handle.setdata(None)
-    #     udata = connection.sfcall('https://emea.salesforce.com'+card['link']) #https://emea.salesforce.com/5002000000DjMtk/
-    #     return udata
+    
 
     def load_pickle(self):
         try:
@@ -658,8 +760,6 @@ class CaseCollector:
         except IOError as e:
             self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
             return False
-    
-    
     
     def view_page_table_parse(self, page):
         maps = []
@@ -738,29 +838,6 @@ class CaseCollector:
             earliest_date = earliest_date.replace(tzinfo = TZI)
         return pages
     
-    def open_connection(self, sfdc = None):
-        if not sfdc:
-            sfdc = self.account
-        try:
-            os.remove(self.temp_folder + sfdc + '_sfcookie.pickle')   # WHY ????
-        except OSError:
-            pass
-        cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
-        connection = sfuser(cheat[sfdc])
-        connection.setdir(self.temp_folder)
-        connection.setdebug(self.myweb_module_debug)
-        connection.sflogin()
-        return connection
-
-    def pull_one_case(self, connection, link, sfdc = None):
-        if not sfdc:
-            sfdc = self.account
-        connection.handle.setref(URLS[sfdc]['case_ref'])
-        html = connection.sfcall(link.join(URLS[sfdc]['case_url']))
-        if html.count('Data Not Available'):
-            raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.account, link))
-        return html
-
     def load_web_data(self, target_time = None):
         connection = self.open_connection()
         pages = self.load_view_pages(connection, target_time)
@@ -797,77 +874,10 @@ class CaseCollector:
                 if self.account == 'RSL' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
                     print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
                     new_html = save_resolution_time(connection, new_records[k], hours_str) # the POST should return new html
-                    if self.write_raw:
-                        new_records[k]['raw'] = new_html
+                
                 records[k] = new_records[k]
         connection.handle.close()
         return records
-
-    # def load_web_and_merge(self, target_agent_name = None, target_time = None):
-    #     new_records = self.load_web_data(target_time)
-    #     for k in new_records.keys():
-    #         self.records[k] = new_records[k] # MERGE
-    #         raise MyError('using the number as dict key, means that we overwrite cases with matching numbers from the different accounts')
-    #     self.new_len = len(new_records)
-    #     self.end_len = len(self.records) # != new + load because of merge
-
-    # def load_one(self, link, sfdc):
-    #     connection = self.open_connection(sfdc)
-    #     html = self.pull_one_case(connection, link, sfdc)
-    #     html = self.clear_bad_chars(html)
-    #     result = {'sfdc': sfdc, 'link': link}
-    #     # raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
-    #     if self.write_raw:
-    #         result['raw'] = html # !!! scary - should zip it
-    #     else:
-    #         result['raw'] = ''
-    #     result = self.parse_case_details(html, result, sfdc)
-    #     # result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
-    #     # result['in_support_sla'] = result['support_time'] < result['support_sla']
-    #     # result['in_response_sla'] = result['response_time'] < result['response_sla']
-    #     # result['in_sla'] = result['in_support_sla'] and result['in_response_sla']
-
-    #     case = CaseObject(number, html)
-    #     result = case.return_model
-
-    #     # ----- PROCESS RESOLUTION TIME IN SF -----
-    #     if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
-    #         safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
-    #         new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
-    #         if self.write_raw:
-    #             result['raw'] = new_html
-    #     # ----- END OF WRITING RESOLUTION TIME IN SF -----
-    #     connection.handle.close()
-    #     return result
-
-
-    def load_one(self, link, sfdc):
-        connection = self.open_connection(sfdc)
-        html = self.pull_one_case(connection, link, sfdc)
-        html = self.clear_bad_chars(html)
-        # result = {'sfdc': sfdc, 'link': link}
-        # # raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
-        # if self.write_raw:
-        #     result['raw'] = html # !!! scary - should zip it
-        # else:
-        #     result['raw'] = ''
-        # result = self.parse_case_details(html, result, sfdc)
-        # result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
-        # result['in_support_sla'] = result['support_time'] < result['support_sla']
-        # result['in_response_sla'] = result['response_time'] < result['response_sla']
-        # result['in_sla'] = result['in_support_sla'] and result['in_response_sla']
-
-        result = CaseObject(sfdc, link, html).process()
-
-        # ----- PROCESS RESOLUTION TIME IN SF -----
-        if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
-            safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
-            new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
-            if self.write_raw:
-                result['raw'] = new_html
-        # ----- END OF WRITING RESOLUTION TIME IN SF -----
-        connection.handle.close()
-        return result
 
     ################################################################################################################
     ################################################################################################################
@@ -910,17 +920,6 @@ class CaseCollector:
         resource.save()
         return results
 
-    def update_one(self, target, sfdc = None):
-        if sfdc and isinstance(target, str) and target.isdigit():
-            target = Case.objects.get(number = target, sfdc = sfdc)
-        elif isinstance(target, Case):
-            pass
-        else:
-            raise MyError('method update_one accepts as arguments string for the case number and string for the sfdc account, or single argument of class Case')
-        new_case_data = self.load_one(target.link, target.sfdc)
-        self.sync_one(target, new_case_data)
-        return new_case_data
-
     def update(self, target_agent_name = None, target_time = None, target_sfdc = None, target_view = None):
         results = []
         if target_view:
@@ -955,11 +954,7 @@ class CaseCollector:
                     p.save()
                     self.comments_collector.save_comments(records[case]['comments'], p)
         
-    def sync_one(self, case, new_data):
-        for k in MODEL_ARG_LIST:
-            setattr(case, k, new_data[k])
-        case.save()
-        self.comments_collector.sync_comments(new_data['comments'], case) # sync comments of existing case
+    
 
     def sync(self, records):
         # unlike calls, actually updates existing records

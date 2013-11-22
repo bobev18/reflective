@@ -171,6 +171,8 @@ Bugs
   - added "clear_bad_chars" method in some classes, but it relies on list of characters known as "bad".
  * update of schedule captures the shifts anew, and for each one overwites the DB record. This fails to remove shifts that were previously recorded, and later removed in the sched - i.e. vacations, sick...
  * even after wipe/reload of shifts, some remain because there are other objects linking towards them
+ * during "reload" we apply target_date restriction to "view pages" and not to cases, which causes to catch cases prior to 21.Apr.2010. Since there are no Shifts/Agents for that time, they get None values, breaking the model
+ * 
 
 --------------------
 Gspread module usage

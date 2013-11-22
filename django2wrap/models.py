@@ -98,7 +98,7 @@ class Case(models.Model):
     response_sla = models.FloatField() # sla # in hrs
     support_time = models.FloatField(null=True) # casetimes ## resolution time in hrs
     response_time = models.FloatField(null=True) # casetimes ## response time in hrs
-    raw = models.TextField(null=True) # this should be added once on stable DB
+    # raw = models.TextField(null=True) # this should be added once on stable DB
     
     postpone = models.DateTimeField(null=True)
     target_chase = models.DateTimeField()

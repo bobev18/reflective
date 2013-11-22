@@ -18,4 +18,5 @@
  * Add Email model -- analogus to the Comments
  * Add Report model -- data from any kind of report can be saved and edited
  * add Handover form
- * 
+ * Move common methods (like "clear_bad_chars") to module "utils"
+ *
