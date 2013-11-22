@@ -169,6 +169,8 @@ Bugs
  * implementation lacks unicode encapsulation, which causes some special characters to fail with encoding error
   - added "safe_print" for debuging
   - added "clear_bad_chars" method in some classes, but it relies on list of characters known as "bad".
+ * update of schedule captures the shifts anew, and for each one overwites the DB record. This fails to remove shifts that were previously recorded, and later removed in the sched - i.e. vacations, sick...
+ * even after wipe/reload of shifts, some remain because there are other objects linking towards them
 
 --------------------
 Gspread module usage

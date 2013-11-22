@@ -324,16 +324,20 @@ class CaseObject:
         #         return max(shifts_that_time, key=lambda x: x.date)
 
         # resolve_shift_by_creation_time = lambda possible_shift, created: min(shifts_that_time, key=lambda x: x.date) if created.hour < 12 else max(shifts_that_time, key=lambda x: x.date)
+        print('\t\tlooking for shift for ',self.agent_name, 'at', self.created)
 
         resolutor = min if self.created.hour < 12 else max
         resolve_shift_by_creation_time = lambda shifts: resolutor(shifts, key=lambda x: x.date)
 
         search_range = (self.created + timedelta(hours=-8), self.created + timedelta(minutes=10))
         shifts_that_time = Shift.objects.filter(date__range=search_range)
+        print('\t\tshifts_that_time', len(shifts_that_time), shifts_that_time)
         if len(shifts_that_time) == 0: #expand into out of hours i.e OT
             search_range = (self.created.replace(hour=0, minute=0), self.created.replace(hour=23, minute=59))
             shifts_that_time = Shift.objects.filter(date__range=search_range)
+            print('\t\t\tshifts_that_time', len(shifts_that_time), shifts_that_time)
         possible_shift = [ z for z in shifts_that_time if self.agent_name.count(z.agent.name)]
+        print('\t\tpossible_shift', len(possible_shift), possible_shift)
         if len(possible_shift) == 0 and len(shifts_that_time) > 0:
             shift = resolve_shift_by_creation_time(shifts_that_time)
             # if self.created.hour < 12:
@@ -345,7 +349,10 @@ class CaseObject:
         elif len(possible_shift) == 1:
             shift = possible_shift[0]
         elif len(possible_shift) == 2:
+            print('\t\tresolutor', resolutor)
+
             shift = resolve_shift_by_creation_time(possible_shift)
+            print('\t\tresolved shift:', shift)
             # if self.created.hour < 12:
             #     shift = min(possible_shift, key=lambda x: x.date)
             # else:

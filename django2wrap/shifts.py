@@ -6,6 +6,8 @@ from django2wrap.models import Agent, Shift, Resource
 from django.db import connection
 from django.conf import settings
 
+TZI = timezone.get_default_timezone()
+
 class MyError(Exception):
     def __init__(self, value):
         self.value = value
@@ -56,7 +58,7 @@ class ScheduleShifts:
         if isinstance(init_date, date):
             pass
         elif isinstance(init_date, dict):
-            init_date = datetime(tzinfo = timezone.get_default_timezone(), **init_date).date()
+            init_date = datetime(tzinfo = TZI, **init_date).date()
         elif isinstance(init_date, str):
             init_date = date.strptime(init_date, "%d %b %y") # 26 nov 12
         else:
@@ -143,6 +145,12 @@ class ScheduleShifts:
                 results.append(record)
         return results
 
+    def wipe_an_year(self, year):
+        start = datetime(year,1,1,0,0,0,0,TZI)
+        end = datetime(year+1,1,1,0,0,0,0,TZI)
+        targets = Shift.objects.filter(date__range = (start, end))
+        print(len(targets), 'targets for year', year, 'have been deleted')
+        targets.delete
 
     def wipe(self):
         cursor = connection.cursor()
@@ -156,14 +164,14 @@ class ScheduleShifts:
         self.wipe()
         self.save()
         resource = Resource.objects.get(name = 'shifts')
-        resource.last_sync = datetime.now(timezone.get_default_timezone())
+        resource.last_sync = datetime.now(TZI)
         resource.save()
         return self.data
 
     def update(self, target_agent_name = None, target_time = None):
         self.load(max(settings.SCHEDULE_KEYS.keys())) # or could be 9999
         resource = Resource.objects.get(name = 'shifts')
-        resource.last_sync = datetime.now(timezone.get_default_timezone())
+        resource.last_sync = datetime.now(TZI)
         resource.save()
         self.sync()
         return self.data
@@ -288,7 +296,7 @@ class ScheduleShifts:
         init_date_range = wks.range('B1:B2')
         #   year is hardcoded -- could be derived from "current" year, but that's not urgent
         return datetime.strptime(init_date_range[0].value + ' ' + init_date_range[1].value + ' ' + init_year, "%d %b %y",
-                tzinfo = timezone.get_default_timezone())
+                tzinfo = TZI)
 
     def _parse_shifts(self, init_date, sheet_data, columns_count = 28, rows_count = 119, map_meaningful = [0,0,0,1,2,3,0,0]):
         rows = []
@@ -315,7 +323,7 @@ class ScheduleShifts:
                 for i in range(len(row)):
                     loop_date = section_date + timedelta(days=i)
                     shift_time = datetime(loop_date.year, loop_date.month, loop_date.day, shift_type[1],
-                                tzinfo = timezone.get_default_timezone())
+                                tzinfo = TZI)
                     agent = self.adjusted(row[i], loop_date)
                     if agent:
                         biglist.append({'color': row[i], 'tipe': shift_type[0], 'date': shift_time, 'agent': agent})
