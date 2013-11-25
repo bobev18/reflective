@@ -142,23 +142,24 @@ class MyError(Exception):
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 
-class CaseObject:
-    def __init__(self, account, link, raw):
+class CaseWebReader:
+    def __init__(self, sfdc, link, raw):
         self.debug_flag = False
-        self.account = account
+        self.sfdc = sfdc
         # self.number = number
         self.link = link
         self.raw = raw
 
     def process(self):
         self.sections = self.split_case_sections()
+        print(self.sections)
         # section case details
         self.details = self.parse_case_header_details(self.sections['case_details'])
-        self.agent_name = self.details['Support Agent'] if self.account == 'WLK' else self.details['Support Analyst']
+        self.agent_name = self.details['Support Agent'] if self.sfdc == 'WLK' else self.details['Support Analyst']
         self.status = self.details['Status']
-        self.system = self.details['System'] if self.account == 'WLK' else self.details['Product']
-        self.priority = self.details['Severity'] if self.account == 'WLK' else self.details['Support Priority']
-        self.reason = self.details['Case Reason'] if self.account == 'WLK' else self.details['Type']
+        self.system = self.details['System'] if self.sfdc == 'WLK' else self.details['Product']
+        self.priority = self.details['Severity'] if self.sfdc == 'WLK' else self.details['Support Priority']
+        self.reason = self.details['Case Reason'] if self.sfdc == 'WLK' else self.details['Type']
         self._type = self.details['Type'] # this is not stored in the model, but is used in RSL estimation of SLA
         self._reason = self.details['Case Reason'] # this is not stored in the model, but is used in RSL estimation of SLA
         self.created = datetime.strptime(self.details['Date/Time Opened'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
@@ -170,19 +171,20 @@ class CaseObject:
         self.shift = self.determine_shift()
         # section case history
         self.support_time, self.response_time = self.parse_case_history_table(self.sections['case_history'])
-        self.response_sla = SLA_RESPONSE[self.account]
+        self.response_sla = SLA_RESPONSE[self.sfdc]
         self.support_sla = self.determine_sla()
 
         self.in_support_sla = self.support_time < self.support_sla
         self.in_response_sla = self.response_time < self.response_sla
         self.in_sla = self.in_support_sla and self.in_response_sla
 
-        result = self.fill_in_dict() # use the dict keys matching model attributes
+        result = self.fill_in_dict() # convert SFDC field names to the model field names - drop those missing in the DB model;
+        # use `result = self.fill_in_dict(apply_filter = False)` to convert SFDC field names to the model field names and leave those missing from the model as they are
 
         # section case comments
         comments_collector = CommentCollector(debug = self.debug)
         self.comment_details = comments_collector._capture_comment_info(self.sections['case_comments'], result)
-
+        result['comments'] =self.comment_details
         return result
 
     def debug(self, *args, sep=' ', end='\n', destination=None):
@@ -230,7 +232,7 @@ class CaseObject:
             'RSL': ['head', 'case_details', 'solutions', 'attachments', 'activity_history', 'open_activities', 'case_comments', 'case_history'],
         }
         sections = self.raw.split('<div class="pbHeader">')
-        sections = dict(zip(CASE_STRUCTURE[self.account], sections))
+        sections = dict(zip(CASE_STRUCTURE[self.sfdc], sections))
         return sections
 
     def parse_case_header_details(self, raw):
@@ -256,7 +258,7 @@ class CaseObject:
         self.debug('history_table', history_table)
         self.debug(history_table, 'sf_hist_table_of_case_' + self.link + '.html', destination = 'file')
         history_table = re.compile(re.escape('Ready to Close'), re.IGNORECASE).sub('Ready_to_Close', history_table)
-        history_table = [ z.groupdict() for z in re.finditer(HISTORY_TABLE_MAPS[self.account], history_table) ]
+        history_table = [ z.groupdict() for z in re.finditer(HISTORY_TABLE_MAPS[self.sfdc], history_table) ]
         for i in range(len(history_table)):
             history_table[i] = dict([ (k, remove_html_tags(v)) for k,v in history_table[i].items() ])
         # fill in missing dates & owners
@@ -306,11 +308,11 @@ class CaseObject:
             else:
                 history_table[i]['status'] = history_table[i]['action']
             # accumulate response time
-            if any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['response'] ]):
+            if any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.sfdc]['response'] ]):
                 response_time += history_table[i]['workhours_delta']
             # determine if status is counted towards support time, and accumulate
-            count_in_status = any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.account]['work'] ])
-            count_in_owner  = history_table[i]['status'].count(SUPPORT_STATUSES[self.account]['owner'])
+            count_in_status = any([history_table[i]['status'].count(z) for z in SUPPORT_STATUSES[self.sfdc]['work'] ])
+            count_in_owner  = history_table[i]['status'].count(SUPPORT_STATUSES[self.sfdc]['owner'])
             if count_in_status and count_in_owner:
                 support_time += history_table[i]['workhours_delta']
         self.debug('Case %s: response time %.2f and support time: %.2fh ' % (self.link, response_time, support_time))
@@ -379,7 +381,7 @@ class CaseObject:
             '_type': {'Question': 8, 'Problem': 16, 'Feature Request': 9999, } 
         }
         support_sla = -1 # undefined
-        if self.account == 'WLK':
+        if self.sfdc == 'WLK':
             for sla_key in WLK_SLA_MAP.keys():
                 if self.system in sla_key:
                     support_sla = WLK_SLA_MAP[sla_key][self.priority[-1]]
@@ -390,16 +392,15 @@ class CaseObject:
                 support_sla = RSL_SLA_MAP['_type'][self._type] # overwrite by "problem" i.e. the field "Type" in SFDC
 
         if support_sla == -1:
-            safe_print('Error determining SLA for case %s in %s' % (self.number, self.account))
-            # raise MyError('Error determining SLA for case %s in %s' % (self.number, self.account))
+            safe_print('Error determining SLA for case %s in %s' % (self.number, self.sfdc))
+            # raise MyError('Error determining SLA for case %s in %s' % (self.number, self.sfdc))
         return support_sla
 
-    def fill_in_dict(self):
+    def fill_in_dict(self, apply_filter = True):
 
-        unused_items = ['', '', 'Case Owner', '', '', '', 'Problem Type', '', '3rd Line Company',
-         '', '3rd Party Case ID', '', 'Case Age In Business Hours', 'Response Date/Time', 'Time With Support', 'Time With Customer', 'Time with 3rd Party',
-          '', '', 'Case Origin', '', '', 'Resolution Description', '', '', 'Created By', 'Last Modified By', 'Priority',
-           'Account Name', '', 'Version', 'Operating System', 'JVM Version', 'Guest Name', 'Database', 'Guest Email Address', '', '', 'Resolution Reason',
+        unused_items = ['Case Owner', 'Problem Type', '3rd Line Company', '3rd Party Case ID', 'Case Age In Business Hours', 'Response Date/Time',
+            'Time With Support', 'Time With Customer', 'Time with 3rd Party', 'Case Origin', 'Resolution Description', 'Created By', 'Last Modified By',
+            'Priority', 'Account Name', 'Version', 'Operating System', 'JVM Version', 'Guest Name', 'Database', 'Guest Email Address', 'Resolution Reason',
             'Resolution Time (Hours)', 'Defect Number', ]
 
         if self.shift:
@@ -412,7 +413,7 @@ class CaseObject:
             'status': self.details['Status'],
             'subject': self.details['Subject'],
             'description': self.details['Description'],
-            'sfdc': self.account,
+            'sfdc': self.sfdc,
             'created': self.created, #Date/Time Opened
             'closed': self.closed, #Date/Time Closed
             'system': self.system, # System || Product
@@ -427,24 +428,29 @@ class CaseObject:
             # 'raw': '',
             # 'postpone', 'target_chase', 'chased'  ## these are appended by the Comments method
         }
+
+        if not apply_filter:
+            for unused in unused_items:
+                if self.details[unused] and self.details[unused] != '' and self.details[unused] != '&nbsp;':
+                    result[unused] = self.details[unused]
+
         return result
 
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
     
-class CaseWebConnector
+class CaseWebConnector:
     def __init__(self, link, sfdc):
         self.link = link
         self.sfdc = sfdc
         self.write_resolution_time_to_SF = False
 
-    def load(self):
-        connection = self._open_connection(self.sfdc)
-        connection.handle.setref(URLS[sfdc]['case_ref'])
-        html = connection.sfcall(self.link.join(URLS[sfdc]['case_url']))
+    def load(self, connection):
+        connection.handle.setref(URLS[self.sfdc]['case_ref'])
+        html = connection.sfcall(self.link.join(URLS[self.sfdc]['case_url']))
         if html.count('Data Not Available'):
             raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.sfdc, self.link))
         html = self._clear_bad_chars(html)
-        result = CaseObject(self.sfdc, self.link, html).process()
+        result = CaseWebReader(self.sfdc, self.link, html).process()
 
         # ----- INVOKE WRITE RESOLUTION TIME IN SF -----
         if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
@@ -470,20 +476,6 @@ class CaseWebConnector
         # ok - tied the following and it errored on char: '\\u200b'
         # return smart_text(text, encoding='utf-8', strings_only=False, errors='strict')
 
-    def _open_connection(self, sfdc = None):
-        if not sfdc:
-            sfdc = self.account
-        try:
-            os.remove(self.temp_folder + sfdc + '_sfcookie.pickle')   # WHY ????
-        except OSError:
-            pass
-        cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
-        connection = sfuser(cheat[sfdc])
-        connection.setdir(self.temp_folder)
-        connection.setdebug(self.myweb_module_debug)
-        connection.sflogin()
-        return connection
-
     def save_resolution_time(u,card,smin_str):
         pass
     #     if card['id'].count('1692')>0:
@@ -508,56 +500,73 @@ class CaseWebConnector
 
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 
-class CaseDBConnector
+class CaseDBConnector:
     def __init__(self, target = None):
-        self.target = target
+        if target and not isinstance(target, Case):
+            raise TypeError('the argument for the init of class %s should be instance of class Case' % self.__class__)
+        self.case = target
 
     def load(self):
-        if self.target:
-            
-        
-    def save(self, target):
-        if self.target:
+        if self.case:
+            result = {}
+            for k in MODEL_ARG_LIST:
+                result[k] = getattr(self.case, k)
+            return result
+        else:
+            return None
+
+    def save(self, data):
+        if self.case:
             self.update(data)       #   skips fields missing in data
             # or
             # self.overwrite(data)  # deletes fields missing in data
+            self.comments_collector.sync_comments(data['comments'], self.case) # sync comments of existing case
         else:
             self.create(data)
+            self.comments_collector.save_comments(data['comments'], self.case) # sync comments of existing case
         
     def create(self, data):
-        filtered_data = dict([ (k, records[case][k],) for k in MODEL_ARG_LIST ])
+        filtered_data = { k:data[k] for k in MODEL_ARG_LIST }
         if filtered_data['creator'] == None or filtered_data['shift'] == None:
             if filtered_data['created'] < datetime(2010,4,21,0,0,0,0,TZI):
                 # happens for cases prior to 21.Apr.2010 ; They fall in the list because during load we apply target_date restriction to pages and not to cases.
                 ## TODO fix this.
-                print('skipping case', case, 'details', row)
+                print('skipping case', case, 'details', filtered_data)
             else:
                 raise MyError("trying to save case without shift or creator; Has data: %s" % data)
         else:
-            p = Case(**row)
-            p.save()
-            self.comments_collector.save_comments(records[case]['comments'], p)
+            self.case = Case(**filtered_data)
+            self.case.save()
+
+        return case
+
+    def overwrite(self, data):
+        # requires all fields from MODEL_ARG_LIST to be present in data
+        for k in MODEL_ARG_LIST:
+            if k in data.keys():
+                setattr(self.case, k, data[k])
+            else:
+                setattr(self.case, k, None)
+        self.case.save()
 
     def update(self, data):
         # skips fields missing in data
         for k in MODEL_ARG_LIST:
-            setattr(self.target, k, data[k])
-        case.save()
-        self.comments_collector.sync_comments(new_data['comments'], case) # sync comments of existing case
-
-    def overwrite(self, data):
-        pass
+            if k in data.keys():
+                setattr(self.case, k, data[k])
+        self.case.save()
 
 
+        # ~~~~~ this below should be in the class for case, not for the connection
         # if sfdc and isinstance(target, str) and target.isdigit():
         #     self.target_case = Case.objects.get(number = number, sfdc = sfdc)
         # elif isinstance(target, Case):
         #     self.target_case = target
         # else:
         #     raise MyError('method update_one accepts as arguments string for the case number and string for the sfdc account, or single argument of class Case')
-        new_case_data = self.load_one(target.link, target.sfdc)
-        self.sync_one(target, new_case_data)
-        return new_case_data
+        # new_case_data = self.load_one(target.link, target.sfdc)
+        # self.sync_one(target, new_case_data)
+        # return new_case_data
 
 
 
@@ -695,10 +704,165 @@ class CaseDBConnector
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 # ()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()()
 
+class ViewWebReader:
+    def __init__(self, sfdc, connection, period_start, period_end = None, view = None):
+        self.sfdc = sfdc
+        self.connection = connection
+        self.start = period_start
+        if period_end:
+            self.end = period_end
+        else:
+            self.end = timezone.now()
+        if view:
+            self.view = view
+        else:
+            self.view = 'all'
+
+        # this used to be relevant, because opening case was done as part of the global load cycle
+        self.num_records_to_pull = 20
+
     
 
+    def load_page_index(self, page_index, num_records_to_pull = None):
+        if not num_records_to_pull:
+            num_records_to_pull = self.num_records_to_pull
+        txdata  = URLS[self.sfdc][self.view]['txdata'] %(str(page_index), num_records_to_pull)
+        self.connection.handle.setdata(txdata)
+        self.connection.handle.setref(URLS[self.sfdc][self.view]['ref2'])
+        html = self.connection.sfcall(URLS[self.sfdc][self.view]['url2'])
+        html = self.clear_bad_chars(html)
+        return html
+
+    def load_pages(self): #, target_time = None):
+        # connection.handle.setref(URLS[self.sfdc][self.view]['ref1'])
+        # html = connection.sfcall(URLS[self.sfdc][self.view]['url1'])
+        # html = self.clear_bad_chars(html)
+        # self.debug_flag = True
+        # self.debug(html, 'sfbot_dump_' + self.sfdc + '_' + self.view + '_cases_view.txt', destination='file')
+        # self.debug_flag = False
+        pages = []
+        page_index = 1
+        upto_page = 999
+        earliest_date = timezone.now()
+        # if not target_time:
+        #     goal_time = datetime(2010, 1, 1, tzinfo = TZI)
+        # else:
+        #     goal_time = target_time
+        # for page_index in range(1, upto_page):
+        # print('earliest_date', earliest_date)
+        # print('goal_time', goal_time)
+        records = []
+        while self.end > earliest_date > self.start: # and upto_page > page_index:
+            # txdata  = URLS[self.sfdc][self.view]['txdata'] %(str(page_index), self.num_records_to_pull)
+            # connection.handle.setdata(txdata)
+            # connection.handle.setref(URLS[self.sfdc][self.view]['ref2'])
+            # html = connection.sfcall(URLS[self.sfdc][self.view]['url2'])
+            # html = self.clear_bad_chars(html)
+            html = self.load_page_index(index)
+            details = self.parse_view_page(html) #[ (links, numbers, create_dates, close_dates), ...]
+            earliest_create = details[-1][2]
+            earliest_close  = details[-1][3]
+            earliest_date = earliest_create # because it cannot be None
+
+            case_period_overlap_conditions = lambda created, closed: any([
+                closed and self.start < closed < self.end,
+                self.start < created < self.end,
+                created < self.start and (not closed or self.end < closed),
+            ])
+
+            records += [ z for z in details if case_period_overlap_conditions(z[2], z[3]) ]
+            self.debug('table view page', page_index, ':', html)
+            page_index += 1
+
+        results = { record[1]:{'number': record[1], 'link': record[0], 'created': record[2]} for record in records }
+        return results
+
+    def parse_view_page(self, page_html):
+        link_numbers_string = re.findall(r'"CASES\.CASE_NUMBER":\[(.+?)\],', page_html, re.DOTALL)
+        if len(link_numbers_string):
+            all_number_links = link_numbers_string[0]
+            finds = re.findall(r'"<a(.+?)</a>"', all_number_links)
+            link_nums = [ re.search(r'href="/(?P<link>\w{15})">(?P<number>\d{8})', find).groupdict() for find in finds ]
+            links, numbers = zip(*link_nums)
+        else:
+            dump_filename = 'sfbot_dump_' + self.sfdc + '_' + self.view + '_cases_view.txt'
+            self.debug(html, dump_filename, destination='file')
+            raise MyError('failed to parse page result - dump in %s' % dump_filename)
+
+        zonify = lambda zlist: [ datetime.strptime(z, '%d/%m/%Y %H:%M').replace(tzinfo = TZI) for z in re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"', zlist) ]
+        create_list = re.findall(r'"CASES\.CREATED_DATE":\[(.+?)\],".+?":', page_html)[0]
+        create_dates = zonify(create_list)
+        try:
+            close_list  = re.findall(r'"CASES\.CLOSED_DATE":\[(.+?)\],".+?":' , page_html)[0]
+            close_dates  = zonify(close_list)
+        except IndexError:
+            close_dates = [None]*len(create_dates)
+
+        results = zip(links, numbers, create_dates, close_dates)
+        return results
+
+    # def view_page_table_parse(self, page_html):
+    #     maps = []
+    #     for m in VIEW_MAPS[self.sfdc]:
+    #         if self.view in m['use_in']:
+    #             maps.append(m)
+    #     big_re = maps[0]['re_start']
+    #     for i in range(1, len(maps)):
+    #         big_re += r'(\[.+?\]),' + maps[i]['re_start']
+    #     self.debug('bigre', big_re)
+    #     self.debug(page_html)
+    #     self.debug(self.sfdc, re.findall(r'"([0-9A-Z\._]+)":\[.+?\]}*,(?=")', page_html, re.DOTALL))
+    #     mgroups = re.search(big_re, page_html, re.DOTALL).groups()
+    #     self.debug('found', len(mgroups), 'groups')
+    #     for group in range(len(mgroups)):
+    #         clean_data = re.sub(r'(?<!([\[,]))"(?![,\]])', r'\\"', mgroups[group].replace('"["','"[ "')) #replace is just for 1742
+    #         data_box = eval(clean_data)
+    #         self.debug('result for section', maps[group], len(data_box), data_box[:5])
+    #         if maps[group]['inner_index']:
+    #             maps[group]['result'] = [ z[maps[group]['inner_index']] for z in data_box ]
+    #         elif 'additional_re' in maps[group].keys():
+    #             maps[group]['result'] = [ re.search(maps[group]['additional_re'], z).group(1) for z in data_box ]
+    #         elif maps[group]['name'] == 'delme':                        
+    #             pass
+    #         else:
+    #             maps[group]['result'] = data_box
+    #     try:
+    #         if not all([ len(maps[0]['result']) == len(maps[z]['result']) for z in range(1,len(maps)) if 'result' in maps[z].keys() ]):
+    #             for r in range(len(maps)):
+    #                 if 'result' in maps[r].keys():
+    #                     print(len(maps[r]['result']))
+    #             raise MyError('unequal lenth of table extracts (i.e. got more case nums than subj)')
+    #     records_box = {}
+    #     for i in range(len(maps[0]['result'])):
+    #         card = {'sfdc': self.sfdc}
+    #         for r in range(len(maps)):
+    #             if 'result' in maps[r].keys():
+    #                 card[maps[r]['name']] = maps[r]['result'][i]
+    #         records_box[card['number']] = card # duplicates the 'number' field, but it's OK, because allows usage of **card
+    #     return records_box
+
+    
+# {'use_in': ['all', 'closed', 'open'], 'name': 'link',    're_start': r'"LIST_RECORD_ID":',      'inner_index': None},
+# {'use_in': ['all', 'closed', 'open'], 'name': 'number',  're_start': r'"CASES\.CASE_NUMBER":',  'inner_index': None, 'additional_re': r'">(\d+?)</a>'},
+# "\u003Ca href=\"/500D000000WynXZ\"\u003E00010787\u003C/a\u003E"
+# "\u003Ca href=\"/500D000000WynXZ\"\u003E00010787\u003C/a\u003E",
+# "\u003Ca href=\"/500D000000WyU9o\"\u003E00010773\u003C/a\u003E",
+# "\u003Ca href=\"/500D000000WKo7g\"\u003E00010709\u003C/a\u003E",
+# "\u003Ca href=\"/500D000000KvMgV\"\u003E00008052\u003C/a\u003E"
+
+
+
+
+
+
+
+
+
+
+
+
 class CaseCollector:
-    def __init__(self, debug = None, account = 'WLK'):
+    def __init__(self, account = 'WLK', view = None, debug = None):
         self.debug_flag = debug
         self.records = {}
         ###########################################################################################
@@ -706,13 +870,20 @@ class CaseCollector:
         ## ------------------------------------------------------------------------------------- ##
         self.account = account # 'RSL'
         ## ..................................................................................... ##
-        
+        if account:
+            self.sfdc = [account]
+        else:
+            self.sfdc = ['WLK', 'RSL']
         ## ..................................................................................... ##
-        
+        if view:
+            self.view = view
+        else:
+            # self.view = 'all'
+            # I think "open" is used more often
+            self.view = 'open'
         ## ..................................................................................... ##
         self.num_records_to_pull = '20'
         ## ..................................................................................... ##
-        self.view = 'all'
         ## ..................................................................................... ##
         self.myweb_module_debug = -1
         ## ..................................................................................... ##
@@ -742,7 +913,72 @@ class CaseCollector:
             else:
                 print(*args, sep=sep, end=end)
 
-    
+    def open_connection(self):
+        try:
+            os.remove(self.temp_folder + self.account + '_sfcookie.pickle')   # WHY ????
+        except OSError:
+            pass
+        cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
+        connection = sfuser(cheat[self.account])
+        connection.setdir(self.temp_folder)
+        connection.setdebug(self.myweb_module_debug)
+        connection.sflogin()
+        return connection
+
+    def load_web_data(self, period_start = None, period_end = None):
+        if not period_start:
+            period_start = datetime(2010,4,20)
+        connection = self.open_connection()
+
+        view_web_reader = ViewWebReader(self.sfdc, connection, period_start, period_end, self.view)
+        records = view_web_reader.load_pages()
+        detailed_records = {}
+        for record in records.values():
+            # this .load(connection) , will process writting support time too, based on self.write_resolution_time_to_SF in CaseWebConnector
+            case_details = CaseWebConnector(record['link'], self.sfdc, ).load(connection)
+            detailed_records[record['number']] = case_details
+            # detailed_records[record['number']]['number'] = record['number']
+            # detailed_records[record['number']]['link'] = record['link']
+            if detailed_records[record['number']]['created'] != record['created']:
+                raise MyError('mismatch of creation date in page view and case details')
+
+        # pages = self.load_view_pages(connection, target_time)
+        # new_records = {}
+        # for page in pages:
+        #     self.debug(page, 'sfbot_dump1.txt', destination='file')
+        # if self.show_case_nums_during_execution:
+        #     print('len', len(new_records))
+        # records = {}
+        # for k in sorted(new_records.keys()):
+        #     new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
+        #     # if not target_time or ('closed' in new_records[k].keys() and new_records[k]['closed'] > target_time) or new_records[k]['created'] > target_time:
+        #     ###
+        #     #### the above is correct idea, but to work it needs more, as the list of cases is already filtered by page_loading
+        #     #### ideally we want to know cases that were already opened at the target_time -- these will have current state either still open, or have close between target time and now
+        #     ###
+        #     if not target_time or new_records[k]['created'] > target_time:
+
+        #         new_records[k] = self.load_one(new_records[k]['link'], self.account)
+
+        #         # html = self.pull_one_case(connection, new_records[k]['link'])
+        #         # html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
+        #         # if self.write_raw:
+        #         #     new_records[k]['raw'] = html # !!! scary - should zip it
+        #         # else:
+        #         #     new_records[k]['raw'] = ''
+        #         # new_records[k] = self.parse_case_details(html, new_records[k])
+        #         # new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
+        #         # new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
+        #         # new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
+        #         # new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
+        #         # ----- PROCESS RESOLUTION TIME IN SF -----
+        #         if self.account == 'RSL' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
+        #             print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
+        #             new_html = save_resolution_time(connection, new_records[k], hours_str) # the POST should return new html
+                
+        #         records[k] = new_records[k]
+        connection.handle.close()
+        return records
 
     def load_pickle(self):
         try:
@@ -761,123 +997,34 @@ class CaseCollector:
             self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
             return False
     
-    def view_page_table_parse(self, page):
-        maps = []
-        for m in VIEW_MAPS[self.account]:
-            if self.view in m['use_in']:
-                maps.append(m)
-        big_re = maps[0]['re_start']
-        for i in range(1, len(maps)):
-            big_re += r'(\[.+?\]),' + maps[i]['re_start']
-        self.debug('bigre', big_re)
-        self.debug(page)
-        self.debug(self.account, re.findall(r'"([0-9A-Z\._]+)":\[.+?\]}*,(?=")', page, re.DOTALL))
-        mgroups = re.search(big_re, page, re.DOTALL).groups()
-        self.debug('found', len(mgroups), 'groups')
-        for g in range(len(mgroups)):
-            clean_data = re.sub(r'(?<!([\[,]))"(?![,\]])', r'\\"', mgroups[g].replace('"["','"[ "')) #replace is just for 1742
-            data_box = eval(clean_data)
-            self.debug('result for section', maps[g], len(data_box), data_box[:5])
-            if maps[g]['inner_index']:
-                maps[g]['result'] = [ z[maps[g]['inner_index']] for z in data_box ]
-            elif 'additional_re' in maps[g].keys():
-                maps[g]['result'] = [ re.search(maps[g]['additional_re'], z).group(1) for z in data_box ]
-            elif maps[g]['name'] == 'delme':                        
-                pass
-            else:
-                maps[g]['result'] = data_box
-        try:
-            if not all([ len(maps[0]['result']) == len(maps[z]['result']) for z in range(1,len(maps)) if 'result' in maps[z].keys() ]):
-                raise MyError('unequal lenth of table extracts (i.e. got more case nums than subj)')
-        except MyError as e:
-            print('Error', e)
-            for r in range(len(maps)):
-                if 'result' in maps[r].keys():
-                    print(len(maps[r]['result']))
-        records_box = {}
-        for i in range(len(maps[0]['result'])):
-            card = {'sfdc': self.account}
-            for r in range(len(maps)):
-                if 'result' in maps[r].keys():
-                    card[maps[r]['name']] = maps[r]['result'][i]
-            records_box[card['number']] = card # duplicates the 'number' field, but it's OK, because allows usage of **card
-        return records_box
-
-    def load_view_pages(self, connection, target_time = None):
-        connection.handle.setref(URLS[self.account][self.view]['ref1'])
-        html = connection.sfcall(URLS[self.account][self.view]['url1'])
-        html = self.clear_bad_chars(html)
-        self.debug_flag = True
-        self.debug(html, 'sfbot_dump_' + self.account + '_close_cases_view.txt', destination='file')
-        self.debug_flag = False
-        pages = []
-        page_index = 1
-        upto_page = 999
-        earliest_date = timezone.now()
-        if not target_time:
-            goal_time = datetime(2010, 1, 1, tzinfo = TZI)
-        else:
-            goal_time = target_time
-        # for page_index in range(1, upto_page):
-        print('earliest_date', earliest_date)
-        print('goal_time', goal_time)
-        while earliest_date > goal_time and upto_page > page_index:
-            txdata  = URLS[self.account][self.view]['txdata'] %(str(page_index), self.num_records_to_pull)
-            connection.handle.setdata(txdata)
-            connection.handle.setref(URLS[self.account][self.view]['ref2'])
-            html = connection.sfcall(URLS[self.account][self.view]['url2'])
-            html = self.clear_bad_chars(html)
-            pages.append(html)
-            # self.debug_flag = True
-            self.debug('table view page', page_index, ':', html)
-            # self.debug_flag = False
-            page_index += 1
-            if not target_time:
-                upto_page = (int(siphon(html, '"totalRowCount":', ',')) // int(self.num_records_to_pull)) + 1
-            earliest_date = datetime.strptime(re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"],".+?":', html)[0], '%d/%m/%Y %H:%M')
-            earliest_date = earliest_date.replace(tzinfo = TZI)
-        return pages
+    ################################################################################################################
+    ################################################################################################################
     
-    def load_web_data(self, target_time = None):
+
+
+    def update_one(self, target, sfdc = None):
+        if sfdc and isinstance(target, str) and target.isdigit():
+            target = Case.objects.get(number = target, sfdc = sfdc)
+        elif isinstance(target, Case):
+            pass
+        else:
+            raise MyError('method update_one accepts as arguments string for the case number and string for the sfdc account, or single argument of class Case')
+        
         connection = self.open_connection()
-        pages = self.load_view_pages(connection, target_time)
-        new_records = {}
-        for page in pages:
-            self.debug(page, 'sfbot_dump1.txt', destination='file')
-            new_records = dict(list(new_records.items()) + list(self.view_page_table_parse(page).items()))
-        if self.show_case_nums_during_execution:
-            print('len', len(new_records))
-        records = {}
-        for k in sorted(new_records.keys()):
-            new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
-            # if not target_time or ('closed' in new_records[k].keys() and new_records[k]['closed'] > target_time) or new_records[k]['created'] > target_time:
-            ###
-            #### the above is correct idea, but to work it needs more, as the list of cases is already filtered by page_loading
-            #### ideally we want to know cases that were already opened at the target_time -- these will have current state either still open, or have close between target time and now
-            ###
-            if not target_time or new_records[k]['created'] > target_time:
-
-                new_records[k] = self.load_one(new_records[k]['link'], self.account)
-
-                # html = self.pull_one_case(connection, new_records[k]['link'])
-                # html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
-                # if self.write_raw:
-                #     new_records[k]['raw'] = html # !!! scary - should zip it
-                # else:
-                #     new_records[k]['raw'] = ''
-                # new_records[k] = self.parse_case_details(html, new_records[k])
-                # new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
-                # new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
-                # new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
-                # new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
-                # ----- PROCESS RESOLUTION TIME IN SF -----
-                if self.account == 'RSL' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
-                    print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
-                    new_html = save_resolution_time(connection, new_records[k], hours_str) # the POST should return new html
-                
-                records[k] = new_records[k]
+        # new_case_data = self.load_one(target.link, target.sfdc)
+        case_details = CaseWebConnector(target.link, target.sfdc).load(connection)
         connection.handle.close()
-        return records
+
+
+        # self.sync_one(target, new_case_data)
+        case_db_writer = CaseDBConnector(case)
+        case_db_writer.save(case_details)
+
+        return case_details
+
+
+
+
 
     ################################################################################################################
     ################################################################################################################
@@ -908,7 +1055,7 @@ class CaseCollector:
             self.account = sys
         # self.account = 'WLK'
             # self.load_web_and_merge(*dump)
-            new_records = self.load_web_data(target_time)
+            new_records = self.load_web_data()
             self.new_len = len(new_records)
             self.end_len += self.new_len
             self.wipe()
@@ -933,52 +1080,66 @@ class CaseCollector:
         for acc in accounts:
             self.account = acc
             # self.load_web_and_merge(target_agent_name, target_time)
-            new_records = self.load_web_data(target_time)
+            new_records = self.load_web_data(period_start=target_time)
             # self.new_len = len(new_records)
             # self.end_len += self.new_len
             self.sync(new_records)
             results += [ new_records[k] for k in sorted(new_records.keys()) ]
         return results
 
-    def save(self, records):
-        if records:
-            for case in records.keys():
-                row = dict([ (k, records[case][k],) for k in MODEL_ARG_LIST ])
-                self.debug(row)
-                if records[case]['creator'] == None or records[case]['shift'] == None:
-                    print('skipping case', case, 'details', row)
-                    # this are cases prior to 21.Apr.2010, but fall in the list because we apply target_date restriction to pages and not to cases.
-                    ## TODO fix this.
-                else:
-                    p = Case(**row)
-                    p.save()
-                    self.comments_collector.save_comments(records[case]['comments'], p)
-        
-    
+    # def save(self, records):
+    #     if records:
+    #         for record in records.keys():
+    #             case_db_writer = CaseDBConnector(None)
+    #             case = case_db_writer.save(records[record])
+    #             self.comments_collector.save_comments(records[record]['comments'], case)
 
-    def sync(self, records):
+    def save(self, records):
         # unlike calls, actually updates existing records
         results = []
-        if records:
-            for case in records.keys():
-                row = { k: records[case][k] for k in MODEL_ARG_LIST }
-                find = Case.objects.filter(number=records[case]['number'], sfdc=records[case]['sfdc'])
-                if find:
-                    p = find[0]
-                    for k in MODEL_ARG_LIST:
-                        # safe_print('='*20, getattr(p, k))
-                        # safe_print('='*20, row[k])
-                        # safe_print(k, 'from', getattr(p, k), 'to', row[k])
-                        setattr(p, k, row[k])
-                    p.save()
-                    self.comments_collector.sync_comments(records[case]['comments'], p) # sync comments of existing case
-                    # find.save()
-                else:
-                    p = Case(**row)
-                    p.save()
-                    self.comments_collector.save_comments(records[case]['comments'], p) # sync comments of existing case
-                results.append(p)
+        for record in records.keys():
+            case = None
+            find = Case.objects.filter(number=records[record]['number'], sfdc=records[record]['sfdc'])
+            if find:
+                case = Case.objects.get(number=records[record]['number'], sfdc=records[record]['sfdc'])
+                # using this instead of find[0] ensures there are no duplicates
+            case_db_writer = CaseDBConnector(case)
+            case_db_writer.save(records[record])
+
+            #!!!# this part is covered in case_db_writer.save(records[record])
+            # if case: #these will be combined later
+            #     self.comments_collector.sync_comments(records[record]['comments'], case)
+            # else:
+            #     self.comments_collector.save_comments(records[record]['comments'], case)
+            results.append(case)
         return results
+
+    # this is for consistency of the calls in "views" -- will be refactored
+    def sync(self, records):
+        self.save(records)
+
+
+        # results = []
+        # if records:
+        #     for case in records.keys():
+        #         row = { k: records[case][k] for k in MODEL_ARG_LIST }
+        #         find = Case.objects.filter(number=records[case]['number'], sfdc=records[case]['sfdc'])
+        #         if find:
+        #             p = find[0]
+        #             for k in MODEL_ARG_LIST:
+        #                 # safe_print('='*20, getattr(p, k))
+        #                 # safe_print('='*20, row[k])
+        #                 # safe_print(k, 'from', getattr(p, k), 'to', row[k])
+        #                 setattr(p, k, row[k])
+        #             p.save()
+        #             self.comments_collector.sync_comments(records[case]['comments'], p) # sync comments of existing case
+        #             # find.save()
+        #         else:
+        #             p = Case(**row)
+        #             p.save()
+        #             self.comments_collector.save_comments(records[case]['comments'], p) # sync comments of existing case
+        #         results.append(p)
+        # return results
  
     def wipe(self):
         cursor = connection.cursor()
