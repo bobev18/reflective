@@ -16,6 +16,11 @@ response = urllib.request.urlopen('http://eigri.com/myweb2.encoded')
 code = response.read()      # a `bytes` object
 decoded_msg = codder.decode(code)
 exec(decoded_msg)
+# with open('C:/Documents and Settings/Office/My Documents/My Dropbox/py3/myweb2b.py','r') as f:
+#     web2module = f.read()
+# exec(web2module)
+
+
 
 SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
 SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1}
@@ -446,21 +451,23 @@ class CaseWebConnector:
 
     def load(self, connection):
         connection.handle.setref(URLS[self.sfdc]['case_ref'])
+        # connection.handle.setref(URLS[     sfdc]['case_ref'])
         html = connection.sfcall(self.link.join(URLS[self.sfdc]['case_url']))
+        # html = connection.sfcall(     link.join(URLS[     sfdc]['case_url']))
         if html.count('Data Not Available'):
             raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.sfdc, self.link))
         html = self._clear_bad_chars(html)
         result = CaseWebReader(self.sfdc, self.link, html).process()
 
         # ----- INVOKE WRITE RESOLUTION TIME IN SF -----
-        if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
+        if self.sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
             safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
             new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
         # ----- END OF WRITE RESOLUTION TIME IN SF -----
 
-        connection.handle.close()
+        # connection.handle.close() ? ? ? 
         return result
-        
+
     def _clear_bad_chars(self, text):
         # KILL BAD UNICODE
         BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d',  ]
@@ -913,13 +920,30 @@ class CaseCollector:
             else:
                 print(*args, sep=sep, end=end)
 
-    def open_connection(self):
+    # def open_connection(self):
+    #     try:
+    #         os.remove(self.temp_folder + self.account + '_sfcookie.pickle')   # WHY ????
+    #     except OSError:
+    #         pass
+    #     cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
+    #     connection = sfuser(cheat[self.account])
+    #     connection.handle.setdebug(2)
+    #     connection.setdir(self.temp_folder)
+    #     connection.setdebug(self.myweb_module_debug)
+    #     connection.sflogin()
+    #     print('connection', connection)
+    #     print(connection.__dict__)
+    #     return connection
+
+    def open_connection(self, sfdc = None):
+        if not sfdc:
+            sfdc = self.account
         try:
-            os.remove(self.temp_folder + self.account + '_sfcookie.pickle')   # WHY ????
+            os.remove(self.temp_folder + sfdc + '_sfcookie.pickle')   # WHY ????
         except OSError:
             pass
         cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
-        connection = sfuser(cheat[self.account])
+        connection = sfuser(cheat[sfdc])
         connection.setdir(self.temp_folder)
         connection.setdebug(self.myweb_module_debug)
         connection.sflogin()
