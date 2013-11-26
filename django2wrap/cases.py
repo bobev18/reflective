@@ -7,7 +7,12 @@ from django.utils.encoding import smart_text
 from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
 from django.db import connection
 from django.conf import settings
+import django2wrap.utils as utils
 from django2wrap.comments import CommentCollector #_find_postpone, _is_chased, _capture_comment_info, wipe_comments, save_comments, sync_comments
+
+# import django2wrap.models.DoesNotExist as DoesNotExist
+# from django2wrap.models import DoesNotExist
+from django.core.exceptions import ObjectDoesNotExist
 
 from django2wrap.bicrypt import BiCrypt
 import urllib.request
@@ -23,7 +28,7 @@ exec(decoded_msg)
 
 
 SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
-SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1}
+SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1.0}
 
 VIEW_MAPS = {
     'WLK': [
@@ -157,7 +162,7 @@ class CaseWebReader:
 
     def process(self):
         self.sections = self.split_case_sections()
-        print(self.sections)
+        print('split into', len(self.sections), 'sections')
         # section case details
         self.details = self.parse_case_header_details(self.sections['case_details'])
         self.agent_name = self.details['Support Agent'] if self.sfdc == 'WLK' else self.details['Support Analyst']
@@ -187,9 +192,10 @@ class CaseWebReader:
         # use `result = self.fill_in_dict(apply_filter = False)` to convert SFDC field names to the model field names and leave those missing from the model as they are
 
         # section case comments
-        comments_collector = CommentCollector(debug = self.debug)
-        self.comment_details = comments_collector._capture_comment_info(self.sections['case_comments'], result)
-        result['comments'] =self.comment_details
+        # comments_collector = CommentCollector(debug = self.debug)
+        # self.comment_details = comments_collector._capture_comment_info(self.sections['case_comments'], result)
+        # result['comments'] = self.comment_details
+        result['raw_comments'] = self.sections['case_comments']
         return result
 
     def debug(self, *args, sep=' ', end='\n', destination=None):
@@ -456,7 +462,7 @@ class CaseWebConnector:
         # html = connection.sfcall(     link.join(URLS[     sfdc]['case_url']))
         if html.count('Data Not Available'):
             raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.sfdc, self.link))
-        html = self._clear_bad_chars(html)
+        html = utils.clear_bad_chars(html)
         result = CaseWebReader(self.sfdc, self.link, html).process()
 
         # ----- INVOKE WRITE RESOLUTION TIME IN SF -----
@@ -468,20 +474,20 @@ class CaseWebConnector:
         # connection.handle.close() ? ? ? 
         return result
 
-    def _clear_bad_chars(self, text):
-        # KILL BAD UNICODE
-        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d',  ]
-        BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d', '©', '“' ]
-        for bc in BAD_CHARS:
-            text = text.replace(bc, '')
-        # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
-        # I think I need to have the encoding specified during the urllib2.read( ) === myweb3
-        # REGULAR CLEANS
-        text = text.replace('u003C', '<')
-        text = text.replace('u003E', '>')
-        return text
-        # ok - tied the following and it errored on char: '\\u200b'
-        # return smart_text(text, encoding='utf-8', strings_only=False, errors='strict')
+    # def _clear_bad_chars(self, text):
+    #     # KILL BAD UNICODE
+    #     BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d',  ]
+    #     BAD_CHARS = ['\u200b', '\u2122', '™', '\uf04a', '\u2019', '\u2013', '\u2018', '\xae', '\u201d', '©', '“' ]
+    #     for bc in BAD_CHARS:
+    #         text = text.replace(bc, '')
+    #     # text = text.encode('utf-8','backslashreplace').decode('utf-8','surrogateescape') # failing
+    #     # I think I need to have the encoding specified during the urllib2.read( ) === myweb3
+    #     # REGULAR CLEANS
+    #     text = text.replace('u003C', '<')
+    #     text = text.replace('u003E', '>')
+    #     return text
+    #     # ok - tied the following and it errored on char: '\\u200b'
+    #     # return smart_text(text, encoding='utf-8', strings_only=False, errors='strict')
 
     def save_resolution_time(u,card,smin_str):
         pass
@@ -522,15 +528,15 @@ class CaseDBConnector:
         else:
             return None
 
-    def save(self, data):
+    def save(self, comments_collector, data):
         if self.case:
             self.update(data)       #   skips fields missing in data
             # or
             # self.overwrite(data)  # deletes fields missing in data
-            self.comments_collector.sync_comments(data['comments'], self.case) # sync comments of existing case
+            comments_collector.sync_comments(data['comments'], self.case) # sync comments of existing case
         else:
             self.create(data)
-            self.comments_collector.save_comments(data['comments'], self.case) # sync comments of existing case
+            comments_collector.save_comments(data['comments'], self.case) # sync comments of existing case
         
     def create(self, data):
         filtered_data = { k:data[k] for k in MODEL_ARG_LIST }
@@ -544,8 +550,6 @@ class CaseDBConnector:
         else:
             self.case = Case(**filtered_data)
             self.case.save()
-
-        return case
 
     def overwrite(self, data):
         # requires all fields from MODEL_ARG_LIST to be present in data
@@ -724,11 +728,24 @@ class ViewWebReader:
             self.view = view
         else:
             self.view = 'all'
+        self.debug_flag = False
+        self.temp_folder = 'change me'
 
         # this used to be relevant, because opening case was done as part of the global load cycle
         self.num_records_to_pull = 20
 
-    
+    def debug(self, *args, sep=' ', end='\n', destination=None):
+        if self.debug_flag:
+            if destination == 'file':
+                try:
+                    with open(self.temp_folder + args[1], 'w') as f:
+                        f.write(args[0])
+                except UnicodeEncodeError as e:
+                    with open(self.temp_folder + args[1], 'w', encoding = 'utf-8') as f:
+                        f.write(args[0])
+                    raise MyError('Unicode fail: ' + str(e))
+            else:
+                print(*args, sep=sep, end=end)
 
     def load_page_index(self, page_index, num_records_to_pull = None):
         if not num_records_to_pull:
@@ -737,7 +754,7 @@ class ViewWebReader:
         self.connection.handle.setdata(txdata)
         self.connection.handle.setref(URLS[self.sfdc][self.view]['ref2'])
         html = self.connection.sfcall(URLS[self.sfdc][self.view]['url2'])
-        html = self.clear_bad_chars(html)
+        html = utils.clear_bad_chars(html)
         return html
 
     def load_pages(self): #, target_time = None):
@@ -750,7 +767,8 @@ class ViewWebReader:
         pages = []
         page_index = 1
         upto_page = 999
-        earliest_date = timezone.now()
+        earliest_date = self.end - timedelta(seconds=1)
+        page_size = self.num_records_to_pull + 1
         # if not target_time:
         #     goal_time = datetime(2010, 1, 1, tzinfo = TZI)
         # else:
@@ -759,16 +777,37 @@ class ViewWebReader:
         # print('earliest_date', earliest_date)
         # print('goal_time', goal_time)
         records = []
-        while self.end > earliest_date > self.start: # and upto_page > page_index:
+        print('cycle is about to start with:')
+        print('self.start', self.start)
+        print('earliest_date', earliest_date)
+        print('self.end', self.end)
+        # while self.end < earliest_date < self.start: # and upto_page > page_index:
+        while self.start < earliest_date < self.end and page_size >= self.num_records_to_pull:
+            print('self.start < earliest_date < self.end')
+            print(self.start.date(), earliest_date.date(), self.end.date())
+            print(self.start < earliest_date < self.end)
+            if records == []:
+                print('cycle for load pages starts')
             # txdata  = URLS[self.sfdc][self.view]['txdata'] %(str(page_index), self.num_records_to_pull)
             # connection.handle.setdata(txdata)
             # connection.handle.setref(URLS[self.sfdc][self.view]['ref2'])
             # html = connection.sfcall(URLS[self.sfdc][self.view]['url2'])
             # html = self.clear_bad_chars(html)
-            html = self.load_page_index(index)
+            html = self.load_page_index(page_index)
+
+            old_debug_flag = self.debug_flag
+            self.debug_flag = True
+            dump_filename = 'sfbot_dump_' + self.sfdc + '_' + self.view + '_cases_view.txt'
+            self.debug(html, dump_filename, destination = 'file')
+            self.debug_flag = old_debug_flag
+
+            print('calling parse for page with index', page_index)
             details = self.parse_view_page(html) #[ (links, numbers, create_dates, close_dates), ...]
+            page_size = len(details)
+            print('completed parse for page with index', page_index)
             earliest_create = details[-1][2]
             earliest_close  = details[-1][3]
+            print('updating earliest_date from', earliest_date, 'to', earliest_create)
             earliest_date = earliest_create # because it cannot be None
 
             case_period_overlap_conditions = lambda created, closed: any([
@@ -776,7 +815,11 @@ class ViewWebReader:
                 self.start < created < self.end,
                 created < self.start and (not closed or self.end < closed),
             ])
-
+            for c_details in details:
+                if case_period_overlap_conditions(c_details[2], c_details[3]):
+                    print('adding details', c_details)
+                else:
+                    print('skipping details', c_details)
             records += [ z for z in details if case_period_overlap_conditions(z[2], z[3]) ]
             self.debug('table view page', page_index, ':', html)
             page_index += 1
@@ -785,15 +828,20 @@ class ViewWebReader:
         return results
 
     def parse_view_page(self, page_html):
+        
+
         link_numbers_string = re.findall(r'"CASES\.CASE_NUMBER":\[(.+?)\],', page_html, re.DOTALL)
         if len(link_numbers_string):
+            print('link_numbers_string', link_numbers_string)
             all_number_links = link_numbers_string[0]
             finds = re.findall(r'"<a(.+?)</a>"', all_number_links)
             link_nums = [ re.search(r'href="/(?P<link>\w{15})">(?P<number>\d{8})', find).groupdict() for find in finds ]
-            links, numbers = zip(*link_nums)
+
+            print('link_nums', link_nums)
+            links, numbers = zip(*[ z.values() for z in link_nums ])
         else:
-            dump_filename = 'sfbot_dump_' + self.sfdc + '_' + self.view + '_cases_view.txt'
-            self.debug(html, dump_filename, destination='file')
+            # dump_filename = 'sfbot_dump_' + self.sfdc + '_' + self.view + '_cases_view.txt'
+            # self.debug(html, dump_filename, destination='file')
             raise MyError('failed to parse page result - dump in %s' % dump_filename)
 
         zonify = lambda zlist: [ datetime.strptime(z, '%d/%m/%Y %H:%M').replace(tzinfo = TZI) for z in re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"', zlist) ]
@@ -805,7 +853,14 @@ class ViewWebReader:
         except IndexError:
             close_dates = [None]*len(create_dates)
 
-        results = zip(links, numbers, create_dates, close_dates)
+        print('links', links)
+        print('numbers', numbers)
+        print('create_dates', create_dates)
+        print('close_dates', close_dates)
+
+        results = list(zip(links, numbers, create_dates, close_dates))
+        print('zipped results', results)
+        print('/\\'*30)
         return results
 
     # def view_page_table_parse(self, page_html):
@@ -920,20 +975,12 @@ class CaseCollector:
             else:
                 print(*args, sep=sep, end=end)
 
-    # def open_connection(self):
-    #     try:
-    #         os.remove(self.temp_folder + self.account + '_sfcookie.pickle')   # WHY ????
-    #     except OSError:
-    #         pass
-    #     cheat = {'WLK': 'wlk', 'RSL': 'st'} #these are hardcoded in myweb2
-    #     connection = sfuser(cheat[self.account])
-    #     connection.handle.setdebug(2)
-    #     connection.setdir(self.temp_folder)
-    #     connection.setdebug(self.myweb_module_debug)
-    #     connection.sflogin()
-    #     print('connection', connection)
-    #     print(connection.__dict__)
-    #     return connection
+   
+    
+    ################################################################################################################
+    ################################################################################################################
+    
+  
 
     def open_connection(self, sfdc = None):
         if not sfdc:
@@ -949,103 +996,129 @@ class CaseCollector:
         connection.sflogin()
         return connection
 
-    def load_web_data(self, period_start = None, period_end = None):
-        if not period_start:
-            period_start = datetime(2010,4,20)
-        connection = self.open_connection()
-
-        view_web_reader = ViewWebReader(self.sfdc, connection, period_start, period_end, self.view)
-        records = view_web_reader.load_pages()
-        detailed_records = {}
-        for record in records.values():
-            # this .load(connection) , will process writting support time too, based on self.write_resolution_time_to_SF in CaseWebConnector
-            case_details = CaseWebConnector(record['link'], self.sfdc, ).load(connection)
-            detailed_records[record['number']] = case_details
-            # detailed_records[record['number']]['number'] = record['number']
-            # detailed_records[record['number']]['link'] = record['link']
-            if detailed_records[record['number']]['created'] != record['created']:
-                raise MyError('mismatch of creation date in page view and case details')
-
-        # pages = self.load_view_pages(connection, target_time)
-        # new_records = {}
-        # for page in pages:
-        #     self.debug(page, 'sfbot_dump1.txt', destination='file')
-        # if self.show_case_nums_during_execution:
-        #     print('len', len(new_records))
-        # records = {}
-        # for k in sorted(new_records.keys()):
-        #     new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=TZI)
-        #     # if not target_time or ('closed' in new_records[k].keys() and new_records[k]['closed'] > target_time) or new_records[k]['created'] > target_time:
-        #     ###
-        #     #### the above is correct idea, but to work it needs more, as the list of cases is already filtered by page_loading
-        #     #### ideally we want to know cases that were already opened at the target_time -- these will have current state either still open, or have close between target time and now
-        #     ###
-        #     if not target_time or new_records[k]['created'] > target_time:
-
-        #         new_records[k] = self.load_one(new_records[k]['link'], self.account)
-
-        #         # html = self.pull_one_case(connection, new_records[k]['link'])
-        #         # html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
-        #         # if self.write_raw:
-        #         #     new_records[k]['raw'] = html # !!! scary - should zip it
-        #         # else:
-        #         #     new_records[k]['raw'] = ''
-        #         # new_records[k] = self.parse_case_details(html, new_records[k])
-        #         # new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
-        #         # new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
-        #         # new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
-        #         # new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
-        #         # ----- PROCESS RESOLUTION TIME IN SF -----
-        #         if self.account == 'RSL' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
-        #             print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
-        #             new_html = save_resolution_time(connection, new_records[k], hours_str) # the POST should return new html
-                
-        #         records[k] = new_records[k]
-        connection.handle.close()
-        return records
-
-    def load_pickle(self):
-        try:
-            self.records = pickle.load(open(self.pickledir + self.account + '_casebox.pickle', 'rb'))
-            self.debug('the pickled data has', len(self.records), 'case records')
-            self.load_len = self.end_len = len(self.records)
-        except IOError as e:
-            self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
-
-    def save_pickle(self):
-        try:
-            pickle.dump(self.records, open(self.pickledir + self.account + '_casebox.pickle', 'wb' ))
-            self.debug('the pickled data has', len(self.records), 'case records')
-            return True
-        except IOError as e:
-            self.debug('Loading data form', self.pickledir + self.account + '_casebox.pickle failed :', e)
-            return False
-    
-    ################################################################################################################
-    ################################################################################################################
-    
+    #name not only for consistency with views.py
+    # def update_one(self, target, sfdc, connection = None):
+    def update_one(self, sfdc, target = None, link = None, connection = None):
+        if sfdc and isinstance(target, str) and target.isdigit():
+            # target = Case.objects.get(number = target, sfdc = sfdc)
+            try:
+                target = Case.objects.get(number = target, sfdc = sfdc)
+            # except django2wrap.models.DoesNotExist:
+            # except DoesNotExist:
+            except Case.DoesNotExist:
+                target = None
 
 
-    def update_one(self, target, sfdc = None):
+        # at this point the target is either None or an instance of Case
+        if not target and not link:
+            raise MyError('method update_one should have case or link')
+
+        if target and target.sfdc != sfdc:
+            raise MyError('method update_one was given target: ' + str(target) + ' which has SFDC: ' + str(target.sfdc) + ', but that doesn\'t match the provided SFDC: ' + sfdc)
+
+        
+        clean_up_connection = False
+        if not connection:
+            clean_up_connection = True
+            connection = self.open_connection(sfdc)
+        # new_case_data = self.load_one(target.link, target.sfdc)
+        if target:
+            case_details = CaseWebConnector(target.link, target.sfdc).load(connection)
+        else:
+            case_details = CaseWebConnector(link, sfdc).load(connection)
+
+
+        # def __init__(self, link, sfdc):
+        #     self.link = link
+        #     self.sfdc = sfdc
+        #     self.write_resolution_time_to_SF = False
+
+        # def load(self, connection):
+        #     connection.handle.setref(URLS[self.sfdc]['case_ref'])
+        #     # connection.handle.setref(URLS[     sfdc]['case_ref'])
+        #     html = connection.sfcall(self.link.join(URLS[self.sfdc]['case_url']))
+        #     # html = connection.sfcall(     link.join(URLS[     sfdc]['case_url']))
+        #     if html.count('Data Not Available'):
+        #         raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.sfdc, self.link))
+        #     html = self._clear_bad_chars(html)
+        #     result = CaseWebReader(self.sfdc, self.link, html).process()
+
+        #     # ----- INVOKE WRITE RESOLUTION TIME IN SF -----
+        #     if self.sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
+        #         safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
+        #         new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
+        #     # ----- END OF WRITE RESOLUTION TIME IN SF -----
+
+        #     # connection.handle.close() ? ? ? 
+        #     return result
+
+        if clean_up_connection:
+            connection.handle.close()
+
+
+        # section case comments
+        # result['raw_comments'] = self.sections['case_comments']
+        # method usage:: results = self.comments_collector._capture_comment_info(html, results)
+        case_details = self.comments_collector._capture_comment_info(case_details['raw_comments'], case_details)
+
+        # self.sync_one(target, new_case_data)
+        case_db_writer = CaseDBConnector(target) # will work with target=None
+        case_db_writer.save(self.comments_collector, case_details)
+
+        return case_details
+
+    def OLD_update_one(self, target, sfdc = None):
         if sfdc and isinstance(target, str) and target.isdigit():
             target = Case.objects.get(number = target, sfdc = sfdc)
         elif isinstance(target, Case):
             pass
         else:
             raise MyError('method update_one accepts as arguments string for the case number and string for the sfdc account, or single argument of class Case')
-        
-        connection = self.open_connection()
+
+        connection = self.open_connection(sfdc)
         # new_case_data = self.load_one(target.link, target.sfdc)
-        case_details = CaseWebConnector(target.link, target.sfdc).load(connection)
-        connection.handle.close()
+        ## def OLDload_one(self, link, sfdc):
+        link = target.link
+        sfdc = target.sfdc
+        if 'load_one'=='load_one':
+            # html = self.pull_one_case(connection, link, sfdc)
+            ## def OLD_pull_one_case(self, connection, link, sfdc = None):
+            if 'pull_one_case'=='pull_one_case':
+                if not sfdc: sfdc = self.account
+                connection.handle.setref(URLS[sfdc]['case_ref'])
+                html = connection.sfcall(link.join(URLS[sfdc]['case_url']))
+                if html.count('Data Not Available'):
+                    raise MyError('Data Not Available == calling case without explicit select of sfdc account; Last attempt used object\'s account %s with link %s' % (self.account, link))
+                return html
+            html = html
+            # --------------------------------
 
+            html = utils.clear_bad_chars(html)
+            result = {'sfdc': sfdc, 'link': link}
+            # raise MyError('implement here parsing of values, normaly taken from a view (case num, subject, open date, close date ...)')
+            print('-'*100)
+            print(html)
+            print('-'*100)
+            exit(1)
+            result = self.parse_case_details(html, result, sfdc)
+            result['support_time'], result['response_time'] = self.parse_case_history_table(html, result)
+            result['in_support_sla'] = result['support_time'] < result['support_sla']
+            result['in_response_sla'] = result['response_time'] < result['response_sla']
+            result['in_sla'] = result['in_support_sla'] and result['in_response_sla']
+            # ----- PROCESS RESOLUTION TIME IN SF -----
+            if sfdc == 'RSL' and self.write_resolution_time_to_SF and result['support_time'] > 0: 
+                safe_print('Writing support time of %.2f hours to case %s' % (result['support_time'], result['number']))
+                new_html = save_resolution_time(connection, result, hours_str) # the POST should return new html
+                if self.write_raw:
+                    result['raw'] = new_html
+            # ----- END OF WRITING RESOLUTION TIME IN SF -----
+            connection.handle.close()
+        new_case_data = result
+        # --------------------------------
+        
 
-        # self.sync_one(target, new_case_data)
-        case_db_writer = CaseDBConnector(case)
-        case_db_writer.save(case_details)
-
-        return case_details
-
+        self.sync_one(target, new_case_data)
+        return new_case_data
 
 
 
@@ -1091,6 +1164,53 @@ class CaseCollector:
         resource.save()
         return results
 
+
+    def load_web_data(self, view, period_start, period_end = None):
+        connection = self.open_connection()
+        view_reader = ViewWebReader(self.account, connection, period_start, period_end, view)        # def __init__(self, sfdc, connection, period_start, period_end = None, view = None):
+        proto_records = view_reader.load_pages()
+        safe_print('proto_records', proto_records)
+        records = {}
+        for k in sorted(proto_records.keys()):
+            print('updateing case', k)
+            records[k] = self.update_one(self.account, target=k, link=proto_records[k]['link'], connection=connection) # does the save to DB too
+
+        connection.handle.close()
+        return records
+        
+
+        # pages = self.load_view_pages(connection, target_time)
+        # new_records = {}
+        # for page in pages:
+        #     self.debug(page, 'sfbot_dump1.txt', destination='file')
+        #     new_records = dict(list(new_records.items()) + list(self.view_page_table_parse(page).items()))
+        # if self.show_case_nums_during_execution:
+        #     print('len', len(new_records))
+        # records = {}
+        # for k in sorted(new_records.keys()):
+        #     new_records[k]['created'] = datetime.strptime(new_records[k]['created'], '%d/%m/%Y %H:%M').replace(tzinfo=timezone.get_default_timezone())
+        #     if not target_time or new_records[k]['created'] > target_time:
+        #         html = self.pull_one_case(connection, new_records[k]['link'])
+        #         html = self.clear_bad_chars(html) # html.replace('u003C','<').replace('u003E','>')
+        #         if self.write_raw:
+        #             new_records[k]['raw'] = html # !!! scary - should zip it
+        #         else:
+        #             new_records[k]['raw'] = ''
+        #         new_records[k] = self.parse_case_details(html, new_records[k])
+        #         new_records[k]['support_time'], new_records[k]['response_time'] = self.parse_case_history_table(html, new_records[k])
+        #         new_records[k]['in_support_sla'] = new_records[k]['support_time'] < new_records[k]['support_sla']
+        #         new_records[k]['in_response_sla'] = new_records[k]['response_time'] < new_records[k]['response_sla']
+        #         new_records[k]['in_sla'] = new_records[k]['in_support_sla'] and new_records[k]['in_response_sla']
+        #         # ----- PROCESS RESOLUTION TIME IN SF -----
+        #         if self.account == 'RSL' and self.write_resolution_time_to_SF and new_records[k]['support_time'] > 0: 
+        #             print('Writing support time of %.2f hours to case %s' % (new_records[k]['support_time'], new_records[k]['number']))
+        #             new_html = save_resolution_time(connection, new_records[k], hours_str) # the POST should return new html
+        #             if self.write_raw:
+        #                 new_records[k]['raw'] = new_html
+        #         records[k] = new_records[k]
+        # connection.handle.close()
+        # return records
+
     def update(self, target_agent_name = None, target_time = None, target_sfdc = None, target_view = None):
         results = []
         if target_view:
@@ -1101,10 +1221,14 @@ class CaseCollector:
             accounts = [target_sfdc]
         else:
             accounts = ['WLK', 'RSL']
+        if not target_time:
+            target_time = datetime(2010,4,20,0,0,0,0,TZI)
+
         for acc in accounts:
+            print('SFDC '*5, '='*5, acc, '='*5, 'SFDC '*5)
             self.account = acc
             # self.load_web_and_merge(target_agent_name, target_time)
-            new_records = self.load_web_data(period_start=target_time)
+            new_records = self.load_web_data(target_view, target_time) # , target_period_end)
             # self.new_len = len(new_records)
             # self.end_len += self.new_len
             self.sync(new_records)
@@ -1128,7 +1252,7 @@ class CaseCollector:
                 case = Case.objects.get(number=records[record]['number'], sfdc=records[record]['sfdc'])
                 # using this instead of find[0] ensures there are no duplicates
             case_db_writer = CaseDBConnector(case)
-            case_db_writer.save(records[record])
+            case_db_writer.save(self.comments_collector, records[record])
 
             #!!!# this part is covered in case_db_writer.save(records[record])
             # if case: #these will be combined later

@@ -156,6 +156,7 @@ Code used:
 TO DO
 -----
  * move "detect environmet" snippet to the settings file
+ * make Comments act more like an object = to keep the results internally, instead of returning them, and later to pull them again upon save
  * consolidate CONSTANTS
  * optimize for speed
  * implement unicode encapsulation:

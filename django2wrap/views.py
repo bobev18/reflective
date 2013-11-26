@@ -202,7 +202,7 @@ def chase(request, run_update_before_chase = False):
                     table.append(row)
 
         for num, sfdc in cases_closed_since_last_chase:
-            case_collector.update_one(target = num, sfdc = sfdc)
+            case_collector.update_one(sfdc, target = num)
 
         result = render(request, 'chase.html', {'data': data, 'table': table, 'cases_closed_since_last_chase': cases_closed_since_last_chase})
         email_result = render(request, 'chase.html', {'data': data, 'table': table})
@@ -275,8 +275,12 @@ def update_case(request, link = None, number = None, sfdc = None):
     if case:
         for item in MODEL_ARG_LIST:
             data.append([item, getattr(case, item)])
-        update_results = case_collector.update_one(target = case)
+        update_results = case_collector.update_one(sfdc, case)
+        # print('update_results', update_results)
+        # exit(1)
     else:
+        # print("whaaat?")
+        # exit(1)
         for item in MODEL_ARG_LIST:
             data.append([item, 'n/a'])
         results = case_collector.update(target_time = timezone.now().replace(hour = 0, minute = 0, second = 0, microsecond = 0), target_view = 'all') # returns list of dicts
@@ -287,7 +291,7 @@ def update_case(request, link = None, number = None, sfdc = None):
             return HttpResponse('<html><body>No matching cases with number %s</body></html>' % number)
 
         # return HttpResponseRedirect('/')
-    for i in range(1,len(MODEL_ARG_LIST) + 1):
+    for i in range(1, len(MODEL_ARG_LIST) + 1):
         data[i].append(update_results[MODEL_ARG_LIST[i-1]])
         if isinstance(data[i][-1],tuple): # clears tuoples of contact links, which get interpreting as style for the field
             data[i][-1] = str(data[i][-1])
