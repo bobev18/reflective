@@ -6,6 +6,9 @@
    - TDD
    - data consistency (tools)
      ~ linking to single DB is a start
+       1. deploy the DB in own folder
+       2. run sched recapture
+         ###%%#$$# need the TDD in place so change of sched recapture code can properly update the DB values of cases, affected by change in shift
    - improve speed (i.e. more strict filtration on periods)
    - post support times to the RSL SFDC
  * Weekly
@@ -20,3 +23,7 @@
  * add Handover form
  * Move common methods (like "clear_bad_chars") to module "utils"
  *
+ * move "detect environmet" snippet to the settings file
+ * make Comments act more like an object = to keep the results internally, instead of returning them, and later to pull them again upon save
+ * consolidate CONSTANTS
+ 

@@ -14,7 +14,8 @@ from django.template.response import TemplateResponse
 from django2wrap.weekly_report import WeeklyReport
 from django2wrap.kpi_report import KPIReport
 from django2wrap.emails import EmailCollector
-from django2wrap.cases import CaseCollector, MODEL_ARG_LIST, SUPPORT_STATUSES, SLA_RESPONSE
+from django2wrap.cases import CaseCollector
+from django2wrap.case_connectors import MODEL_ARG_LIST, SUPPORT_STATUSES, SLA_RESPONSE
 case_collector = CaseCollector()
 # from . import chase as chaser
 
