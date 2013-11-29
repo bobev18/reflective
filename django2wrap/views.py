@@ -229,19 +229,20 @@ def weekly(request, from_date = None, run_update_before_chase = True):
         #     if clean_data['from_date']:
         #         report_start_date = datetime(tzinfo = timezone.get_default_timezone(), *tuple( getattr(clean_data['from_date'], z) for z in ['year', 'month', 'day'] ))
     elif from_date:
-            match = re.match(r'(?P<year>\d\d\d\d).(?P<month>\d\d).(?P<day>\d\d)', from_date)
-            print('matches', match.groups())
-            from_date_details = { k:int(v) for k,v in match.groupdict().items() }
-            report_start_date = datetime(tzinfo = timezone.get_default_timezone(), *tuple( int(from_date_details[z]) for z in ['year', 'month', 'day'] ))
-            # report = WeeklyReport(report_start_date)
-            # data = report.action()
+        match = re.match(r'(?P<year>\d\d\d\d).(?P<month>\d\d).(?P<day>\d\d)', from_date)
+        print('matches', match.groups())
+        from_date_details = { k:int(v) for k,v in match.groupdict().items() }
+        report_start_date = datetime(tzinfo = timezone.get_default_timezone(), *tuple( int(from_date_details[z]) for z in ['year', 'month', 'day'] ))
+        # report = WeeklyReport(report_start_date)
+        # data = report.action()
     else:
         report_start_date = None
 
     print('report_start_date', report_start_date)
     if report_start_date:
         if run_update_before_chase:
-            update_results = case_collector.update(target_time = timezone.now() - timedelta(days=8))
+            print('running update prior to selecting cases')
+            update_results = case_collector.true_update(target_start_time = timezone.now() - timedelta(days=8), target_end_time = timezone.now())
         report = WeeklyReport(report_start_date)
         data = report.action()
 

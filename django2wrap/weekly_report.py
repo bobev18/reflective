@@ -7,6 +7,7 @@ from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
 from django.db.models import Min
 # from django.db import connection
 from django.conf import settings
+import django2wrap.utils as utils
 
 LINKS = {
     'WLK': '<a href="https://eu1.salesforce.com/%s" target="_blank">%s</a>',
@@ -73,9 +74,19 @@ class WeeklyReport:
             report_start_date = report_end_date - timedelta(days=7)
 
         print('true working period for the weekly:', report_start_date, report_end_date)
-        self.closed_workset = Case.objects.filter(closed__range = (report_start_date, report_end_date), status__contains = 'Close').order_by('sfdc', 'number')
+        # self.closed_workset = Case.objects.filter(status__contains = 'Close').filter(closed__range = (report_start_date, report_end_date)).order_by('sfdc', 'number')
+        # self.closed_workset += Case.objects.filter(status__contains = 'Close').filter(closed__range = (report_end_date, timezone.now())).order_by('sfdc', 'number')
+        self.closed_workset = Case.objects.filter(status__contains = 'Close').filter(closed__range = (report_start_date, timezone.now())).order_by('sfdc', 'number')
         self.open_workset = Case.objects.exclude(status__contains = 'Close').order_by('sfdc', 'number')
         self.tz = timezone.get_current_timezone()
+        # print('*'*30)
+        # for case in self.open_workset:
+        #     print(('*' + case.number.rjust(14,' ') + '|' + case.created.strftime("%d/%m/%Y %H:%M")).ljust(29,' ') + '*')
+        print('*'*60)
+        for case in self.closed_workset:
+            print(('*' + case.number.rjust(14,' ') + ' | ' + case.created.strftime("%d/%m/%Y %H:%M") + '|' + case.closed.strftime("%d/%m/%Y %H:%M")).ljust(49,' ') + '*')
+        print('*'*60)
+        print()
         self.report_end_date = timezone.make_naive(report_end_date, self.tz).strftime("%d.%m.%Y")
         self.temp_folder = settings.LOCATION_PATHS['temp_folder']
 
@@ -190,13 +201,17 @@ class WeeklyReport:
 
     def _feedback_to_user_within_1h(self, case, comments, *args):
         created = case.created
-        byclient_comments = comments.filter(byclient=False)#.order_by('-added')
+        bysupport_comments = comments.filter(byclient=False)#.order_by('-added')
         first_comm_date = None
-        if len(byclient_comments) > 0:
-            first_comm_date = byclient_comments[0].added
+        if len(bysupport_comments) > 0:
+            first_comm_date = bysupport_comments[0].added
         else:
             first_comm_date = timezone.now()
-        done = created + timedelta(hours=1) > first_comm_date 
+        # done = created + timedelta(hours=1) > first_comm_date
+        if case.number.count('2276'):
+            done = utils.worktime_diffference(created, first_comm_date, True) < 1
+        else:
+            done = utils.worktime_diffference(created, first_comm_date) < 1
         if done:
             result = 'done'
         else:
@@ -240,17 +255,18 @@ class WeeklyReport:
 
     def _user_confirmation_obtained(self, case, comments, *args):
         APPROVALS = {
-            'client': [['close the case'], ['data( has) c(o|a)me through'],['happy to close this case'], ['Please close this case'],['close this one']],
+            'client': [['close the case'], ['data( has) c(o|a)me through'],['happy to close this case'], ['Please close this case'],['close this one'],['Please close the case'],['You can close the call'],
+            ['You can close this call']],
             'agent' : [
                 ['called','everything is back online'],
                 ['called','printing is ok (today|now)'], #Called Ryde TO, printing is ok today.
-                ['Ferry+ is performing nice and smooth'],
-                ['This solved the problem'],
+                [r'Ferry+ is performing nice and smooth'],
+                [r'This solved the problem'],
                 [r'problem( is)* solved'],
                 ['called', 'TO', 'no issues'],
                 ['called', 'TO', 'all fine'],
                 # ['called', '*any client here*', str(['all fine', r'everything is back (online|to normal)', r'no( more)* issues', ''])], # this is just for anotation of futute design
-                ['all( (seems|is))* fine'],
+                [r'all( (seems|is))* fine'],
                 [r'there(\'| i)s no errors*'],
                 [r'there(\'| a)re no errors*'],
                 [r'confirmed( that)*', ' is fine'],
@@ -267,6 +283,7 @@ class WeeklyReport:
                 [r'printing is fine'],
                 [r'\. *No problems\.'],
                 [r'Got confirmation that they received the email'],
+                [r'Thank you for your reply. I am closing the case now'],
 
                 # The printing is fine for the whole office.
                 # asked me not to repeat this procedure but to close the case

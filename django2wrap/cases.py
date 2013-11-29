@@ -198,6 +198,32 @@ class CaseCollector:
             results += [ new_records[k] for k in sorted(new_records.keys()) ]
         return results
 
+    def true_update(self, target_agent_name = None, target_start_time = None, target_end_time = None, target_sfdc = None, target_view = None):
+        results = []
+        if target_view:
+            self.view = target_view
+        else:
+            self.view = 'all'
+        if target_sfdc:
+            accounts = [target_sfdc]
+        else:
+            accounts = ['WLK', 'RSL']
+        if not target_start_time:
+            target_start_time = datetime(2010,4,20,0,0,0,0,TZI)
+        # if not target_end_time:
+        #     target_end_time = timezone.now()
+
+        for acc in accounts:
+            print('SFDC '*5, '='*5, acc, '='*5, 'SFDC '*5)
+            self.account = acc
+            # self.load_web_and_merge(target_agent_name, target_time)
+            new_records = self.load_web_data(target_view, target_start_time, target_end_time)
+            # self.new_len = len(new_records)
+            # self.end_len += self.new_len
+            self.sync(new_records)
+            results += [ new_records[k] for k in sorted(new_records.keys()) ]
+        return results
+
     def save(self, records):
         # unlike calls, actually updates existing records
         results = []

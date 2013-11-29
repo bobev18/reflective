@@ -1,7 +1,7 @@
 # -*- coding: <utf-8> -*-
 import re, pickle, os, sys
 from datetime import datetime, timedelta
-from datetime import time as dtime
+
 import django.utils.timezone as timezone
 from django.utils.encoding import smart_text
 from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
@@ -17,7 +17,7 @@ code = response.read()      # a `bytes` object
 decoded_msg = codder.decode(code)
 exec(decoded_msg)
 
-SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
+# SHIFT_TIMES = {'start': 5, 'end': 20, 'workhours': 15, 'non workhours': 9}
 SLA_RESPONSE = {'WLK': 0.25, 'RSL': 1.0}
 VIEW_MAPS = {
     'WLK': [
@@ -194,31 +194,31 @@ class CaseWebReader:
             else:
                 print(*args, sep=sep, end=end)
 
-    def _worktime_diffference(self, start, end):
-        self.debug('Start of period: ', start.strftime('%d/%m/%Y %H:%M'))
-        self.debug('End of period  : ', end.strftime('%d/%m/%Y %H:%M'))
-        day = timedelta(days=1)
-        hour = timedelta(hours=1)
-        if start.time() < dtime(SHIFT_TIMES['start']):
-            start.replace(hour=SHIFT_TIMES['start'])
-        if start.time() > dtime(SHIFT_TIMES['end']):
-            start.replace(hour=SHIFT_TIMES['start']) + timedelta(days=1)
-        if end.time() < dtime(SHIFT_TIMES['start']):
-            end.replace(hour=SHIFT_TIMES['end']) + timedelta(days=-1)
-        if end.time() > dtime(SHIFT_TIMES['end']):
-            end.replace(hour=SHIFT_TIMES['end'])
-        if start.date() != end.date():
-            delta_days = (end - start) // day # delta days (17 // 3 = 2)
-            transposed_end = end - timedelta(days=delta_days)
-            result = transposed_end - start + delta_days * timedelta(hours = SHIFT_TIMES['workhours']) #
-            self.debug('delta days:', str(delta_days))
-            self.debug('transposed end: ', transposed_end.strftime('%d/%m/%Y %H:%M'))
-            if transposed_end.date() != start.date():
-                result += timedelta(hours=-SHIFT_TIMES['non workhours'])
-        else:
-            result = end - start
-        self.debug('result : ' + str(result))
-        return round(result / hour, 2)
+    # def _worktime_diffference(self, start, end):
+    #     self.debug('Start of period: ', start.strftime('%d/%m/%Y %H:%M'))
+    #     self.debug('End of period  : ', end.strftime('%d/%m/%Y %H:%M'))
+    #     day = timedelta(days=1)
+    #     hour = timedelta(hours=1)
+    #     if start.time() < dtime(SHIFT_TIMES['start']):
+    #         start.replace(hour=SHIFT_TIMES['start'])
+    #     if start.time() > dtime(SHIFT_TIMES['end']):
+    #         start.replace(hour=SHIFT_TIMES['start']) + timedelta(days=1)
+    #     if end.time() < dtime(SHIFT_TIMES['start']):
+    #         end.replace(hour=SHIFT_TIMES['end']) + timedelta(days=-1)
+    #     if end.time() > dtime(SHIFT_TIMES['end']):
+    #         end.replace(hour=SHIFT_TIMES['end'])
+    #     if start.date() != end.date():
+    #         delta_days = (end - start) // day # delta days (17 // 3 = 2)
+    #         transposed_end = end - timedelta(days=delta_days)
+    #         result = transposed_end - start + delta_days * timedelta(hours = SHIFT_TIMES['workhours']) #
+    #         self.debug('delta days:', str(delta_days))
+    #         self.debug('transposed end: ', transposed_end.strftime('%d/%m/%Y %H:%M'))
+    #         if transposed_end.date() != start.date():
+    #             result += timedelta(hours=-SHIFT_TIMES['non workhours'])
+    #     else:
+    #         result = end - start
+    #     self.debug('result : ' + str(result))
+    #     return round(result / hour, 2)
 
     def split_case_sections(self):
         CASE_STRUCTURE = {
@@ -279,7 +279,7 @@ class CaseWebReader:
                 else:
                     history_table[i]['end'] = datetime.now()
             # calculate delta
-            history_table[i]['workhours_delta'] = self._worktime_diffference(history_table[i]['start'], history_table[i]['end']) # as float
+            history_table[i]['workhours_delta'] = utils.worktime_diffference(history_table[i]['start'], history_table[i]['end']) # as float
             # determine status & owner for the period
             if i != 0: 
                 if history_table[i]['action'].count('Owner'):
@@ -592,6 +592,7 @@ class ViewWebReader:
             print('calling parse for page with index', page_index)
             details = self.parse_view_page(html) #[ (links, numbers, create_dates, close_dates), ...]
             page_size = len(details)
+            print('detected page size as:', page_size)
             print('completed parse for page with index', page_index)
             earliest_create = details[-1][2]
             earliest_close  = details[-1][3]
@@ -612,6 +613,13 @@ class ViewWebReader:
             self.debug('table view page', page_index, ':', html)
             page_index += 1
 
+        print('paging cycle ended')
+        print('self.start < earliest_date < self.end')
+        print(self.start.date(), earliest_date.date(), self.end.date())
+        print(self.start < earliest_date < self.end)
+        print('page_size >= self.num_records_to_pull')
+        print(page_size, self.num_records_to_pull, page_size >= self.num_records_to_pull)
+
         results = { record[1]:{'number': record[1], 'link': record[0], 'created': record[2]} for record in records }
         return results
 
@@ -630,7 +638,17 @@ class ViewWebReader:
             # self.debug(html, dump_filename, destination='file')
             raise MyError('failed to parse page result - dump in %s' % dump_filename)
 
-        zonify = lambda zlist: [ datetime.strptime(z, '%d/%m/%Y %H:%M').replace(tzinfo = TZI) for z in re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"', zlist) ]
+        # zonify = lambda zlist: [ datetime.strptime(z, '%d/%m/%Y %H:%M').replace(tzinfo = TZI) for z in re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d)"', zlist) ]
+        def zonify(zlist):
+            dates_list = re.findall(r'"(\d\d/\d\d/\d\d\d\d \d\d:\d\d|&nbsp;)"', zlist)
+            print('mid dates_list', dates_list)
+            for i in range(len(dates_list)):
+                if re.match(r'\d\d/\d\d/\d\d\d\d \d\d:\d\d', dates_list[i]):
+                    dates_list[i] = datetime.strptime(dates_list[i], '%d/%m/%Y %H:%M').replace(tzinfo = TZI)
+                else:
+                    dates_list[i] = None
+            print('final dates_list', dates_list)
+            return dates_list
         create_list = re.findall(r'"CASES\.CREATED_DATE":\[(.+?)\],".+?":', page_html)[0]
         create_dates = zonify(create_list)
         try:
@@ -639,10 +657,10 @@ class ViewWebReader:
         except IndexError:
             close_dates = [None]*len(create_dates)
 
-        print('links', links)
-        print('numbers', numbers)
-        print('create_dates', create_dates)
-        print('close_dates', close_dates)
+        print('links', len(links), links)
+        print('numbers', len(numbers), numbers)
+        print('create_dates', len(create_dates), create_dates)
+        print('close_dates', len(close_dates), close_dates)
 
         results = list(zip(links, numbers, create_dates, close_dates))
         print('zipped results', results)
