@@ -141,7 +141,7 @@ def table(value):
     "formats as table"
     try:
         header, body = listify(value)
-        ('header, body', header, body)
+        # ('header, body', header, body)
     except TypeError:
         return ''
     try:
@@ -157,9 +157,9 @@ def table(value):
             html += '<tr>'
             for val in row:
                 if type(val) == tuple:
-                    html += '<td ' + val[1] + '>' + str(val[0]) + '</td>'
+                    html += '<td ' + val[1] + '>' + str(val[0]).replace('<', '&lt;').replace('>', '&gt;') + '</td>'
                 else:
-                    html += '<td>' + str(val) + '</td>'
+                    html += '<td>' + str(val).replace('<', '&lt;').replace('>', '&gt;') + '</td>'
             html += '</tr>'
         html += '</table>'
         return html

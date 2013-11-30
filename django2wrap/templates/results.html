@@ -32,6 +32,11 @@
             <h1>{{title}} Results</h1>
             {{data|table|safe}}
         {% endif %}
+        {% if data2 %}
+            <br>
+            <h1>Additional Results</h1>
+            {{data2|table|safe}}
+        {% endif %}
     </div>
     </body>
 </html>

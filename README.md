@@ -142,19 +142,20 @@ The test of the transactional capabilities of the DB works fine. The `set_autoco
 ##### SQLite3 on Win
 Initial DB sync requires setup of superuser via prompt. Using SQLite3 on Win caused an issue -- entering any data via the prompt does not register the pressing of Enter.
 Fix: replace the "input" method that is imported from "six" in the following files:
- * in file: C:\Python32\Lib\site-packages\django\contrib\auth\management\commands\createsuperuser.py
- * in file: C:\Python32\Lib\site-packages\django\contrib\auth\management\__init__.py
+ * C:\Python32\Lib\site-packages\django\contrib\auth\management\commands\createsuperuser.py
+ * C:\Python32\Lib\site-packages\django\contrib\auth\management\__init__.py
+ * C:\Python32\Lib\site-packages\south\utils\py3.py
 
 Code used:
 
     from django.utils.six.moves import input as _failing
-
     def input(arg):
         return _failing(arg).strip()
 
 -----
 TO DO
 -----
+ * try switching to PostgreSQL
  * optimize for speed
  * implement unicode encapsulation:
    - read as bytes & decode

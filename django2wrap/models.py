@@ -70,6 +70,16 @@ class Shift(models.Model):
     def items(self):
         return [self.agent.name, self.date.strftime("%d/%m/%y %H:%M"), self.tipe,] # self.color]
 
+class Contact(models.Model):
+    name = models.CharField(max_length=64)
+    sfdc = models.CharField(max_length=3, choices=SFDC_ACCOUNTS)
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=20, unique=True)
+    link = models.URLField(unique=True)
+    
+    def __str__(self):
+        return self.name + ' ' + self.email + ' in ' + self.sfdc
+
 class Case(models.Model):
     #'status', 'actual', 'name', 'created', 'udata', 'system', 'sla', 'reason', 'link', 'result', 'closed', 'casetimes', 'closedate', 'problem', 'subject', 'id', 'severity'
     number = models.CharField(max_length=4) #id
@@ -87,7 +97,6 @@ class Case(models.Model):
     priority = models.CharField(max_length=1, choices=PRIORITIES, default='3') #severity
     reason = models.CharField(max_length=64, choices=REASONS, default='Problem', blank=True, null=True) #reason
     # problem = models.CharField(max_length=64, choices=, default='', blank=True, null=True) #problem
-    contact =  models.CharField(max_length=64) #===name #only the name for now...
     created = models.DateTimeField() #created
     closed = models.DateTimeField(null=True) #closedate
     link = models.URLField(unique=True) # link
@@ -104,6 +113,7 @@ class Case(models.Model):
     target_chase = models.DateTimeField()
     chased = models.BooleanField(default=True) # actual
 
+    contact =  models.ForeignKey(Contact)
     creator = models.ForeignKey(Agent)
     shift = models.ForeignKey(Shift) # the shift during which the case was created
     last_sync = models.DateTimeField(auto_now_add=True)
@@ -130,12 +140,32 @@ class Case(models.Model):
     def comments(self):
         return Comment.objects.filter(case=self).order_by('added')
 
+class SupportEmail(models.Model):
+    uid = models.CharField(max_length=12, unique=True)
+    subject = models.CharField(max_length=1024)
+    date = models.DateTimeField() # unique=True ??
+    sender = models.EmailField()
+    recipient = models.EmailField()
+    message = models.TextField()
+    sfdc = models.CharField(max_length=3, choices=SFDC_ACCOUNTS, default=None, null=True)
+    agent = models.ForeignKey(Agent, blank=True, null=True)
+    shift = models.ForeignKey(Shift, blank=True, null=True)
+    case = models.ForeignKey(Case, blank=True, null=True)
+    contact =  models.ForeignKey(Contact, default=None, null=True)
+
+    # class Meta:
+    #     unique_together = (("date", "subject"),)
+
+    def __str__(self):
+        return self.uid + ' ' + self.date.strftime("%d/%m/%Y %H:%M") + ' : ' + self.subject
+
 class Call(models.Model):
     agent = models.ForeignKey(Agent, default=None, null=True) # needed until I include the schedule from before Dec 2012
     shift = models.ForeignKey(Shift, default=None, null=True) # needed until I include the schedule from before Dec 2012
     case = models.ForeignKey(Case, blank=True, null=True)
     filename = models.CharField(max_length=128, unique=True)
     date = models.DateTimeField()
+    contact =  models.ForeignKey(Contact, default=None, null=True)
     # contact = models.CharField(max_length=128, default=None, null=True)
         
     def __str__(self):
@@ -164,13 +194,12 @@ class Comment(models.Model):
     byclient = models.BooleanField(default=False) #this will fall once we have Client model
     shift = models.ForeignKey(Shift)
     case = models.ForeignKey(Case)
-    call = models.ForeignKey(Call, null=True)
-    # email_message = models.ForeignKey(EmailMessage)
+    call = models.ForeignKey(Call, default=None, null=True)
+    email = models.ForeignKey(SupportEmail, default=None, null=True)
     added = models.DateTimeField()
     message = models.TextField()
     # postpone = models.BooleanField(default=False) # lacking the DateTime field is indication of no postpone
     postpone = models.DateTimeField(null=True)
-    # raw = models.TextField()
     
     def __str__(self):
         return str(self.case) + ': ' + str(self.added)

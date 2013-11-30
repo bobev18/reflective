@@ -9,7 +9,7 @@ from django.shortcuts import render
 from django.core.mail import send_mail, mail_admins, mail_managers, EmailMessage, EmailMultiAlternatives
 from django2wrap.forms import EscalationForm, LicenseForm, SyncDetailsForm, WeeklyForm
 # from django.db.models import Max
-from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource
+from django2wrap.models import Agent, Shift, Case, Call, Comment, Resource, SupportEmail
 from django.template.response import TemplateResponse
 from django2wrap.weekly_report import WeeklyReport
 from django2wrap.kpi_report import KPIReport
@@ -397,28 +397,31 @@ def monthly(request, sfdc, target_month = None, run_update_before_chase = False)
     print(results)
     return render(request, 'results.html', {'title': 'Monthly Report', 'data': results})
 
-def temp_email_lists(request, sfdc):
-    collector = EmailCollector()
-    target_start_date = timezone.now().replace(month=10, day=1, hour=0, minute=0, second=0, microsecond=0)
+def temp_email_lists(request, sfdc, run_update_before_chase = True):
+    target_start_date = timezone.now().replace(month=11, day=1, hour=0, minute=0, second=0, microsecond=0)
     target_end_date = target_start_date + timedelta(days = monthrange(target_start_date.year, target_start_date.month)[1])
-    results = collector.temporary_view_for_kpi_use(sfdc, target_start_date, target_end_date)
-    # data = []
-    # for email in results:
-    #     data.append([ email[z] for z in ['uid', 'sent', 'agent', 'shift'] ])
+    data2 = None
+    if run_update_before_chase:
+        collector = EmailCollector()
+        results = collector.temporary_view_for_kpi_use(sfdc, target_start_date, target_end_date)
+
+        data2 = [['uid', 'subject', 'sender', 'recipient', 'date', 'message', 'agent', 'shift', 'contact']]
+        for email in results:
+            data2.append([ email[z] for z in ['uid', 'subject', 'sender', 'recipient', 'date', 'message', 'agent', 'shift', 'contact'] ])
+    
+    emails = SupportEmail.objects.filter(date__range=(target_start_date, target_end_date))
     names = []
     filtered_results = {}
-    for result in results:
-        if result['agent']:
-            if result['agent'].name in names:
-                filtered_results[result['agent'].name].append(result)
+    for mail in emails:
+        if mail.agent:
+            if mail.agent.name in names:
+                filtered_results[mail.agent.name].append(mail)
             else:
-                names.append(result['agent'].name)
-                filtered_results[result['agent'].name] = [result]
+                names.append(mail.agent.name)
+                filtered_results[mail.agent.name] = [mail]
 
-    # names = list(set(names))
-    # data = []
     data = [['name', 'email count']]
     for name in names:
         data.append([name, len(filtered_results[name])])
 
-    return render(request, 'results.html', {'title': 'Temporary Email List', 'data': data})
+    return render(request, 'results.html', {'title': 'Temporary Email List', 'data': data, 'data2': data2})

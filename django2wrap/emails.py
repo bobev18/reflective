@@ -1,7 +1,8 @@
 import imaplib, email, re, sys, pickle
+from email.parser import Parser
 from datetime import datetime, timedelta, date
 import django.utils.timezone as timezone
-from django2wrap.models import Agent, Shift
+from django2wrap.models import Agent, Shift, Case, SupportEmail
 from django.conf import settings # import EMAIL_HOST, EMAIL_PORT, EMAIL_HOST_USER, EMAIL_HOST_PASSWORD
 
 
@@ -38,26 +39,26 @@ class MyError(Exception):
     def __str__(self):
         return repr(self.value)
 
+# uid = models.CharField(max_length=12, unique=True)
+# date = models.DateTimeField() # unique=True ??
+# subject = models.CharField(max_length=1024)
+# sender = models.EmailField()
+# recipient = models.EmailField()
+# message = models.TextField()
+# sfdc = models.CharField(max_length=3, choices=SFDC_ACCOUNTS, default=None, null=True)
+# agent = models.ForeignKey(Agent, null=True)
+# shift = models.ForeignKey(Shift)
+# case = models.ForeignKey(Case, blank=True, null=True)
+
+MODEL_FIELDS = ['uid', 'date', 'subject', 'sender', 'recipient', 'message', 'sfdc', 'agent', 'shift', 'case', 'contact']
+
 class EmailCollector:
     def __init__(self, debug=None):
         self.debug = debug
         self.account = None
 
     def _open_box(self, user, password, host, port):
-        # if port == 993:
-        #     box = imaplib.IMAP4_SSL(host=host, port=port)
-        # else:
-        #     box = imaplib.IMAP4(host=host, port=port)
-        # print('host',host,"pine")
-        # print('port',port,993)
-        # mail = imaplib.IMAP4_SSL(host="pine", port=993)
-        # mail.login("itsupport", "Wightlink99")
-        # print('mail folders', mail.list())
-        # exit(1)
-
         box = imaplib.IMAP4_SSL(host=host, port=port)
-        # box.debug = 2
-        # print('check', box.status('"Sent Items"',''))
         box.login(user, password)
         # print('mail folders', box.list())
         return box
@@ -82,27 +83,51 @@ class EmailCollector:
             all_messages = data[0].split()
             print('all_messages', len(all_messages))
             for uid in all_messages:
-                print('uid::', uid)
-                result, data = box.uid('fetch', uid, '(RFC822)')
-                # if uid == b'5384':
-                #     print(data[0][1])
-                matches = re.findall(b'charset=(.+?);', data[0][1])
-                if len(matches) == 0:
-                    matches = re.findall(b'charset="*(.+?)["\s]', data[0][1])
-                encoding = matches[0].decode('utf-8','ignore')
-                raw_email = data[0][1].decode(encoding)
-                email_message = email.message_from_string(raw_email)
-                email_date = email_message['Date']
-                email_date = datetime.strptime(email_date[:31], '%a, %d %b %Y %H:%M:%S %z')
-                result = {}
-                if email_date < target_end_date:
-                    result['message'] = email_message
-                    result['uid'] = uid
-                    result['sent'] = email_date
-                    result['text'] = self._get_first_text_block(email_message)
-                    results.append(result)
+                if self.account == 'WLK' and uid in [b'525', b'529', b'966', b'967', b'1020']: # not sure what happens, but connection seems to hang. It occurs only on stupid MS servers
+                    print('skipping', uid)
+                else:
+                    print('uid::', uid)
+                    result, data = box.uid('fetch', uid, '(RFC822)')
+                    # if uid == b'5384':
+                    #     print(data[0][1])
+                    matches = re.findall(b'charset=(.+?);', data[0][1])
+                    print('\t\tmatches1', matches)
+                    if len(matches) == 0:
+                        matches = re.findall(b'charset="*(.+?)["\s]', data[0][1])
+                        print('\t\tmatches2', matches)
+                    if len(matches) > 0:
+                        encoding = matches[0].decode('utf-8','ignore')
+                        try:
+                            print('\t\ttrying decode with encoding', encoding)
+                            raw_email = data[0][1].decode(encoding)
+                        except LookupError as e:
+                            print(e)
+                            raw_email = data[0][1].decode('utf-8','ignore')
+                    else:
+                        print('no encoding found for message', uid)
+                        raw_email = data[0][1].decode('utf-8','ignore')
+                    print('\tmessage is decoded')
+                    email_message = email.message_from_string(raw_email)
+                    print('\tmessage is parsed from string')
+                    email_date = email_message['Date']
+                    email_date = datetime.strptime(email_date[:31], '%a, %d %b %Y %H:%M:%S %z')
+                    for k in email_message.keys():
+                        print(k, ':', email_message[k])
+                        print('-='*10)
+                    print()
+                    result = {}
+                    if email_date < target_end_date:
+                        result['uid'] = uid.decode('ascii')
+                        result['sfdc'] = self.account
+                        result['date'] = email_date
+                        result['subject'] = email_message['subject']
+                        result['sender'] = email_message['from']
+                        result['recipient'] = email_message['to']#.replace('<', '&lt;').replace('>', '&gt;')
+                        result['message'] = self._get_first_text_block(email_message)
+                        results.append(result)
 
-                count += 1
+                    count += 1
+
             print('folder', folder, 'size', count)
         return results
 
@@ -162,61 +187,16 @@ class EmailCollector:
         # print(uid, email_date, '~ RESULT:', result)
         return results
 
-    # def _old_determine_agents(self, messages):
-    #     for message in messages:
-    #         # print('-'*20)
-    #         safe_print(message['uid'])
-    #         # print('-'*20)
-    #         # print('~'*60, uid, email_date, '~'*60)
-    #         # safe_print(text)
-    #         potential_names = self._find_agent_reference(message['text'])
-    #         potential_shifts = Shift.objects.filter(date__range=(message['sent'] - timedelta(hours=8),message['sent']))
-    #         if not len(potential_shifts):
-    #             potential_shifts = Shift.objects.filter(date__range=(message['sent'].replace(hour=0, minute=0, second=0), message['sent'].replace(hour=23,minute=59,second=59)))
-    #         if not len(potential_shifts):
-    #             raise MyError('No matching shifts for email %s sent on %s' % (message['uid'], message['sent'].strftime("%Y-%m-%d %H:%M")))
-
-    #         matches = []
-    #         if potential_names:
-    #             for shift in potential_shifts:
-    #                 for name in potential_names:
-    #                     if shift.agent.name == name:
-    #                         matches.append(shift)
-
-    #         if len(matches) == 0:
-    #             #trust the shift
-    #             if len(potential_shifts) == 1:
-    #                 message['shift'] = potential_shifts[0]
-    #             else:
-    #                 if message['sent'] < message['sent'].replace(hour=12, minute=0, second=0):
-    #                     message['shift'] = potential_shifts.order_by('date')[0]
-    #                 else:
-    #                     message['shift'] = potential_shifts.order_by('-date')[0]
-    #         elif len(matches) == 1:
-    #             message['shift'] = matches[0]
-    #         else:
-    #             #message sent during overlap, and both agent names apear in the email text
-    #             matches.sort(key=lambda x: x.date)
-    #             # print('sorted matches', matches)
-    #             if message['sent'] < message['sent'].replace(hour=12, minute=0, second=0):
-    #                 message['shift'] = matches[0]
-    #             else:
-    #                 message['shift'] = matches[-1]
-
-    #         message['agent'] = message['shift'].agent
-
-    #     return messages
-
     def _determine_agents(self, messages):
         for message in messages:
             safe_print(message['uid'])
             # safe_print(text)
-            potential_names = self._find_agent_reference(message['text'])
-            potential_shifts = Shift.objects.filter(date__range=(message['sent'] - timedelta(hours=8),message['sent']))
+            potential_names = self._find_agent_reference(message['message'])
+            potential_shifts = Shift.objects.filter(date__range=(message['date'] - timedelta(hours=8),message['date']))
             if not len(potential_shifts):
-                potential_shifts = Shift.objects.filter(date__range=(message['sent'].replace(hour=0, minute=0, second=0), message['sent'].replace(hour=23,minute=59,second=59)))
+                potential_shifts = Shift.objects.filter(date__range=(message['date'].replace(hour=0, minute=0, second=0), message['date'].replace(hour=23,minute=59,second=59)))
             if not len(potential_shifts):
-                raise MyError('No matching shifts for email %s sent on %s' % (message['uid'], message['sent'].strftime("%Y-%m-%d %H:%M")))
+                raise MyError('No matching shifts for email %s sent on %s' % (message['uid'], message['date'].strftime("%Y-%m-%d %H:%M")))
 
             matches = []
             if potential_names:
@@ -234,12 +214,18 @@ class EmailCollector:
             else:
                 # message sent during overlap, and both agent names apear in the email text
                 matches.sort(key=lambda x: x.date)
-                if message['sent'] < message['sent'].replace(hour=12, minute=0, second=0):
+                if message['date'] < message['date'].replace(hour=12, minute=0, second=0):
                     message['shift'] = matches[0]
                 else:
                     message['shift'] = matches[-1]
                 message['agent'] = message['shift'].agent
 
+        return messages
+
+    def _determine_contacts(self, messages):
+        #not implemented
+        for message in messages:
+            message['contact'] = None
         return messages
 
     def pickleit(self, data):
@@ -248,17 +234,34 @@ class EmailCollector:
     def depickleit(self):
         return pickle.load(open(PICKLE_PATHFILE + self.account + ".pickle", "rb"))
 
-    def temporary_view_for_kpi_use(self, target_box, target_start_date, target_end_date=timezone.now(), source='web'):
+    def save(self, messages):
+        for message in messages:
+            mail = SupportEmail.objects.filter(uid = message['uid'])
+            if mail:
+                mail = mail[0]
+                for k in MODEL_FIELDS:
+                    if k in message.keys():
+                        setattr(mail, k, message[k])
+            else:
+                mail = SupportEmail(**message)
+            mail.save()
+
+    def temporary_view_for_kpi_use(self, target_box, target_start_date, target_end_date=timezone.now()):
         self.account = target_box
-        if source == 'web':
-            box = self._open_box(settings.BOX_SPECS[target_box]['user'], settings.BOX_SPECS[target_box]['pass'], settings.BOX_SPECS[target_box]['host'], settings.BOX_SPECS[target_box]['port'])
-            messages = self._pull_messages(box, target_start_date, target_end_date)
-            self._close_box(box)
-            if self.account == 'WLK':
-                self.pickleit(messages)
-            print('---------------------------------------> pickled')
-        else:
-            messages = self.depickleit()
+        # pull all messages by period
+    
+        box = self._open_box(settings.BOX_SPECS[target_box]['user'], settings.BOX_SPECS[target_box]['pass'], settings.BOX_SPECS[target_box]['host'], settings.BOX_SPECS[target_box]['port'])
+        messages = self._pull_messages(box, target_start_date, target_end_date)
+        self._close_box(box)
+        # filter out service emails - chase, forms & etc
+        internal = lambda address: address.count('@reflective.com') or address.count('@reflectivebg.com') or address.count('itsupport@wightlink.co.uk')
+        messages = [ z for z in messages if not internal(z['recipient']) ]
+        # find foreign keys
         messages = self._determine_agents(messages)
+        messages = self._determine_contacts(messages)
+        # store in the DB
+        self.save(messages)
+        print(len(messages), 'emails saved in the DB for the period ', target_start_date, '-', target_end_date)
+
         return messages
 
