@@ -70,3 +70,12 @@ def worktime_diffference(start, end, debug = None):
         if debug:
             print('end', end, 'start', start, 'result:', result)
     return round(result / hour, 2)
+
+LINKS = {
+    'WLK': '<a href="https://eu1.salesforce.com/%s" target="_blank">%s</a>',
+    'RSL': '<a href="https://emea.salesforce.com/%s" target="_blank">%s</a>',
+}
+
+def case_to_num_link(case):
+    num, sfdc, link = [ getattr(case, z) for z in ['number', 'sfdc', 'link'] ]
+    return LINKS[sfdc] % (link, num)

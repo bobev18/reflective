@@ -3,16 +3,13 @@ import re, os, sys
 from calendar import monthrange
 from datetime import datetime, timedelta
 import django.utils.timezone as timezone
-from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
+from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment, SupportEmail
 from django.db.models import Min
 from django.conf import settings
 from itertools import groupby
 from django2wrap.weekly_report import WeeklyReport
+import django2wrap.utils as utils
 
-LINKS = {
-    'WLK': '<a href="https://eu1.salesforce.com/%s" target="_blank">%s</a>',
-    'RSL': '<a href="https://emea.salesforce.com/%s" target="_blank">%s</a>',
-}
 FORMULA = "="
 SEPARATOR = '|'
 remove_html_tags = lambda data: re.compile(r'<.*?>').sub('', data)
@@ -36,12 +33,14 @@ class MyError(Exception):
 
 class KPIReport:
     def __init__(self, target_month = None):
-        if not target_month or not isinstance(target_month, datetime):
-            self.target_month = datetime(timezone.now().year, timezone.now().month - 1, 1, 0, 0, 0)
-        elif isinstance(target_month, str):
+        if isinstance(target_month, str):
             self.target_month = datetime.strptime('1' + target_month, '%d/%m/%Y')
+        elif isinstance(target_month, datetime):
+            pass
         else:
-            raise MyError('invalid target month %s' % target_month)
+            self.target_month = datetime(timezone.now().year, timezone.now().month - 1, 1, 0, 0, 0)
+            # raise MyError('invalid target month %s' % target_month)
+
         self.end_of_month = self.target_month + timedelta(days = monthrange(self.target_month.year, self.target_month.month)[1])
         self.methods  = ['number of shifts', 'number of comments', 'number of calls', 'number of emails out', 'number of gtm sessions', 'results from exams', 'callback sop', 'chasing sop', ]
         self.feedback = ['number of L2 cases solved', 'license sop fail', 'escalation sop fail', ]
@@ -60,14 +59,17 @@ class KPIReport:
         table_results = [self.fields]
         callback_results, chase_results = self._callback_n_chasing_sops()
         all_period_comments = Comment.objects.filter(added__range=(self.target_month, self.end_of_month))
+
         print('range',self.target_month, self.end_of_month, 'len', len(all_period_comments))
         for name in self.agent_names:
-            print(name)#, [ (z,z.start,z.end) for z in self.agents if z.name==name])
+            # print(name)#, [ (z,z.start,z.end) for z in self.agents if z.name==name])
+            agent_comments = all_period_comments.filter(agent=self.results[name]['agent'])
+            print('agent', name ,'agent comms', len(agent_comments))
             self.results[name]['number of shifts'] = self._number_of_shifts(self.results[name]['agent'])
-            self.results[name]['number of comments'] = self._number_of_comments(self.results[name]['agent'], all_period_comments)
+            self.results[name]['number of comments'] = self._number_of_comments(agent_comments)
             self.results[name]['number of calls'] = self._number_of_calls(self.results[name]['agent'])
-            self.results[name]['number of emails out'] = self._number_of_emails_out()
-            self.results[name]['number of gtm sessions'] = self._number_of_gtm_sessions()
+            self.results[name]['number of emails out'] = self._number_of_emails_out(self.results[name]['agent'])
+            self.results[name]['number of gtm sessions'] = self._number_of_gtm_sessions(agent_comments)
             self.results[name]['results from exams'] = 0
             self.results[name]['callback sop'] = len([ z for z in callback_results if z.name == name ])
             self.results[name]['chasing sop'] = len([ z for z in chase_results if z.name == name ])
@@ -80,11 +82,9 @@ class KPIReport:
     def _number_of_shifts(self, agent):
         return len(Shift.objects.filter(agent=agent, date__range=(self.target_month, self.end_of_month)))
 
-    def _number_of_comments(self, agent, all_period_comments):
-        agent_comments = all_period_comments.filter(agent=agent)
-        print('agent comms', len(agent_comments))
-        agent_comments = all_period_comments.filter(agent__name=agent.name)
-        print('name', agent.name, 'proper? agent comms', len(agent_comments))
+    def _number_of_comments(self, agent_comments):
+        # agent_comments = all_period_comments.filter(agent__name=agent.name)
+        # print('name', agent.name, 'proper? agent comms', len(agent_comments))
         return len(agent_comments)
 
     def _number_of_calls(self, agent):
@@ -98,13 +98,24 @@ class KPIReport:
         print('count', count)
         return count
 
-    def _number_of_emails_out(self):
-        return 0
-        pass
+    def _number_of_emails_out(self, agent):
+        print('agent & range', agent, self.target_month, self.end_of_month)
+        emails = SupportEmail.objects.filter(agent=agent, date__range=(self.target_month, self.end_of_month))
+        return len(emails)
 
-    def _number_of_gtm_sessions(self):
-        return 0
-        pass
+    def _number_of_gtm_sessions(self, agent_comments):
+        mentions = []
+        for comm in agent_comments:
+            text = comm.message
+            GTM_mention = [ len(re.findall(r'[^\w]'+z+r'[^\w]', text, re.I)) for z in [r'GTM', r'Go To Meeting', r'GoToMeeting'] ]
+            RDC_mention = [ len(re.findall(r'[^\w]'+z+r'[^\w]', text, re.I)) for z in [r'RDC', r'Remote Session', r'Remote Desktop'] ]
+            # print(case.number, 'GTM len findall per keywords', GTM_mention)
+            # print(case.number, 'RDC len findall per keywords', RDC_mention)
+            GTM_mention = any(GTM_mention)
+            RDC_mention = any(RDC_mention)
+            if GTM_mention or RDC_mention:
+                mentions.append(str(comm) + '&nbsp;' + utils.case_to_num_link(comm.case))
+        return str(len(mentions)) + '<br>' + '<br>'.join(mentions)
     
     def _feedback_to_user_within_1h(self, case, all_case_comments):
         created = case.created

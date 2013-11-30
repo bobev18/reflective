@@ -63,6 +63,12 @@ class PhoneCalls:
         for filename in os.listdir(os.path.join(settings.MP3_STORAGE, agent_folder)):
             if filename.endswith('.mp3'):
                 file_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(settings.MP3_STORAGE, agent_folder, filename)))
+                # file_time = file_time.replace(tzinfo=None)
+                if not file_time.tzinfo:
+                    file_time = file_time.replace(tzinfo=timezone.get_default_timezone())
+                if not target_time.tzinfo:
+                    target_time = target_time.replace(tzinfo=timezone.get_default_timezone())
+
                 if (target_time and target_time < file_time) or not target_time:
                     result = self._process_file(filename, agent_folder, file_time)
                     if result: result_box.append(result)

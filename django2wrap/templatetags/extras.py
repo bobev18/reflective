@@ -157,9 +157,9 @@ def table(value):
             html += '<tr>'
             for val in row:
                 if type(val) == tuple:
-                    html += '<td ' + val[1] + '>' + str(val[0]).replace('<', '&lt;').replace('>', '&gt;') + '</td>'
+                    html += '<td ' + val[1] + '>' + str(val[0]) + '</td>'
                 else:
-                    html += '<td>' + str(val).replace('<', '&lt;').replace('>', '&gt;') + '</td>'
+                    html += '<td>' + str(val) + '</td>'
             html += '</tr>'
         html += '</table>'
         return html

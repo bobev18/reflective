@@ -309,7 +309,8 @@ def kpi(request, run_update_before_chase = True):
         # update calls
     else:
         update_results = None
-    report = KPIReport()
+    # report = KPIReport()
+    report = KPIReport('/11/2013')
     data = report.produce()
     data.sort(key=lambda x: x[0])
     result = render(request, 'results.html', {'title': 'KPI Report', 'data': data})
