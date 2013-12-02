@@ -73,9 +73,12 @@ class Shift(models.Model):
 class Contact(models.Model):
     name = models.CharField(max_length=64)
     sfdc = models.CharField(max_length=3, choices=SFDC_ACCOUNTS)
-    email = models.EmailField(unique=True)
-    phone = models.CharField(max_length=20, unique=True)
-    link = models.URLField(unique=True)
+    email = models.EmailField()
+    phone = models.CharField(max_length=20)
+    link = models.URLField()
+
+    class Meta:
+        unique_together = (("sfdc", "link"),)
     
     def __str__(self):
         return self.name + ' ' + self.email + ' in ' + self.sfdc
@@ -99,7 +102,7 @@ class Case(models.Model):
     # problem = models.CharField(max_length=64, choices=, default='', blank=True, null=True) #problem
     created = models.DateTimeField() #created
     closed = models.DateTimeField(null=True) #closedate
-    link = models.URLField(unique=True) # link
+    link = models.URLField() # link ## unique ~~ what if 2 contact from WLK and RSL have matching link strings
 
     in_support_sla = models.BooleanField(default=True) # actual
     in_response_sla = models.BooleanField(default=True) # actual
@@ -121,7 +124,7 @@ class Case(models.Model):
     ### list of comments of a case would be the reversed call on the Comment>>>Case via foreign key
     ### 
     class Meta:
-        unique_together = (("number", "sfdc"),)
+        unique_together = (("sfdc", "number"),("sfdc", "link"),)
 
     def __str__(self):
         return self.number

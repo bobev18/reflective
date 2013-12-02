@@ -27,7 +27,7 @@ class LicenseForm(forms.Form):
     priority = forms.ChoiceField(choices=(('normal', 'normal'), ('high', 'high')), help_text='Add support priority')
     requestor = forms.ChoiceField(widget=forms.RadioSelect, choices=(('partner', 'partner'), ('client of a partner', 'client of a partner'), ('end user', 'end user')), label='Organization Type', help_text='Select requestor type')
     company = forms.CharField(max_length=128, help_text='Add the company name')
-    pather_company = forms.CharField(max_length=128, help_text='Partner company name (optional - applies only if Organization type is "Clent of a Partner")', required=False)
+    partner_company = forms.CharField(max_length=128, help_text='Partner company name (optional - applies only if Organization type is "Clent of a Partner")', required=False)
     contact = forms.CharField(max_length=64, help_text='Add contact name')
     hostid = forms.CharField(min_length =6, max_length=6, label='Host ID', help_text='Enter the Host ID')
     product = forms.ChoiceField(choices=(('StressTester', 'StressTester'), ('Sentinel', 'Sentinel')), help_text='What product is the license for')

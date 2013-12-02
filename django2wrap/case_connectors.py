@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import django.utils.timezone as timezone
 from django.utils.encoding import smart_text
-from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment
+from django2wrap.models import Agent, Shift, Call, Resource, Case, Comment, Contact
 from django.db import connection
 from django.conf import settings
 import django2wrap.utils as utils
@@ -167,6 +167,17 @@ class CaseWebReader:
         except ValueError:
             self.closed = None
 
+        #process contact
+        contact_dict = {'sfdc': self.sfdc, 'link': self.details['Contact Link'], 'name': self.details['Contact Name'], 
+            'phone': self.details['Contact Phone'], 'email': self.details['Contact Email']}
+        find_contact = Contact.objects.filter(sfdc=self.sfdc, link=contact_dict['link'])
+        if find_contact:
+            find_contact = find_contact[0]
+        else:
+            find_contact = Contact(**contact_dict)
+            find_contact.save()
+        self.contact = find_contact
+
         self.shift = self.determine_shift()
         # section case history
         self.support_time, self.response_time = self.parse_case_history_table(self.sections['case_history'])
@@ -194,32 +205,6 @@ class CaseWebReader:
             else:
                 print(*args, sep=sep, end=end)
 
-    # def _worktime_diffference(self, start, end):
-    #     self.debug('Start of period: ', start.strftime('%d/%m/%Y %H:%M'))
-    #     self.debug('End of period  : ', end.strftime('%d/%m/%Y %H:%M'))
-    #     day = timedelta(days=1)
-    #     hour = timedelta(hours=1)
-    #     if start.time() < dtime(SHIFT_TIMES['start']):
-    #         start.replace(hour=SHIFT_TIMES['start'])
-    #     if start.time() > dtime(SHIFT_TIMES['end']):
-    #         start.replace(hour=SHIFT_TIMES['start']) + timedelta(days=1)
-    #     if end.time() < dtime(SHIFT_TIMES['start']):
-    #         end.replace(hour=SHIFT_TIMES['end']) + timedelta(days=-1)
-    #     if end.time() > dtime(SHIFT_TIMES['end']):
-    #         end.replace(hour=SHIFT_TIMES['end'])
-    #     if start.date() != end.date():
-    #         delta_days = (end - start) // day # delta days (17 // 3 = 2)
-    #         transposed_end = end - timedelta(days=delta_days)
-    #         result = transposed_end - start + delta_days * timedelta(hours = SHIFT_TIMES['workhours']) #
-    #         self.debug('delta days:', str(delta_days))
-    #         self.debug('transposed end: ', transposed_end.strftime('%d/%m/%Y %H:%M'))
-    #         if transposed_end.date() != start.date():
-    #             result += timedelta(hours=-SHIFT_TIMES['non workhours'])
-    #     else:
-    #         result = end - start
-    #     self.debug('result : ' + str(result))
-    #     return round(result / hour, 2)
-
     def split_case_sections(self):
         CASE_STRUCTURE = {
             'WLK': ['head', 'case_details', 'solutions', 'open_activities', 'activity_history', 'case_comments', 'case_history', 'attachments'],
@@ -232,14 +217,17 @@ class CaseWebReader:
     def parse_case_header_details(self, raw):
         filtered = re.sub(r'</*br>', '\n', raw, 0, re.I)
         # extraction of description is unique, because it may contain HTML tags -- we need to pull it befor we destroy the tags
-        description = re.findall(r'<div id="cas15_ileinner">(.+?)</div>', filtered, re.DOTALL)
+        description  = re.findall(r'<div id="cas15_ileinner">(.+?)</div>', filtered, re.DOTALL)
+        # <div id="cas3_ileinner"><a href="/003D000000mM0AW" ...">Adam Parrott</a></div>
+        contact_link = re.findall(r'<div id="cas3_ileinner"><a href="(.+?)"' , filtered, re.DOTALL)
 
         filtered = re.sub(r'<[^>]*>','~',filtered)
         box = [ z.strip() for z in filtered.split('~') if z != '' and not z.count('sfdcPage.setHelp') ]
 
         items = ['Case Number', 'Contact Name', 'Case Owner', 'Contact Phone', 'System', 'Contact Email', 'Problem Type', 'Case Reason', '3rd Line Company', 'Support Agent', '3rd Party Case ID', 'Severity', 'Case Age In Business Hours', 'Response Date/Time', 'Time With Support', 'Time With Customer', 'Time with 3rd Party', 'Status', 'Type', 'Case Origin', 'Subject', 'Description', 'Resolution Description', 'Date/Time Opened', 'Date/Time Closed', 'Created By', 'Last Modified By', 'Priority', 'Account Name', 'Product', 'Version', 'Operating System', 'JVM Version', 'Guest Name', 'Database', 'Guest Email Address', 'Support Analyst', 'Support Priority', 'Resolution Reason', 'Resolution Time (Hours)', 'Defect Number', ]
         details = { box[i]:box[i+1] for i in range(len(box)) if box[i] in items }
-        details['Description'] = description[0]
+        details['Description']  = description[0]
+        details['Contact Link'] = contact_link[0]
         return details
 
     def parse_case_history_table(self, html):
@@ -391,7 +379,7 @@ class CaseWebReader:
             'system': self.system, # System || Product
             'priority': self.priority, # Severity || Support Priority
             'reason': self.reason, # Case Reason || Type
-            'contact': str(tuple([self.details['Contact Name'], self.details['Contact Phone'], self.details['Contact Email']])), ### to implement 'Contact Name', 'Contact Phone', 'Contact Email',
+            'contact': self.contact,
             'link': self.link, # self.link
             'shift': self.shift, # self.shift  << #Date/Time Opened && Support Agent || Support Analyst
             'creator': creator, # 

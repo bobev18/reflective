@@ -74,7 +74,7 @@ class KPIReport:
             self.results[name]['callback sop'] = len([ z for z in callback_results if z.name == name ])
             self.results[name]['chasing sop'] = len([ z for z in chase_results if z.name == name ])
             # self.results[name]['number of L2 cases solved'] = self._number_of_not_lack_of_knowledge_cases_solved()
-            table_results.append([name, 0] + [ self.results[name][z] for z in self.methods ] + [0, 0, 0])
+            table_results.append([name, '=(D2+2*E2+F2+3*G2+H2-I2-J2+K2-L2-M2)/C2'] + [ self.results[name][z] for z in self.methods ] + [0, 0, 0])
 
         # print(str(self.results))
         return table_results
@@ -105,6 +105,7 @@ class KPIReport:
 
     def _number_of_gtm_sessions(self, agent_comments):
         mentions = []
+        inner_table = '<table>'
         for comm in agent_comments:
             text = comm.message
             GTM_mention = [ len(re.findall(r'[^\w]'+z+r'[^\w]', text, re.I)) for z in [r'GTM', r'Go To Meeting', r'GoToMeeting'] ]
@@ -114,8 +115,14 @@ class KPIReport:
             GTM_mention = any(GTM_mention)
             RDC_mention = any(RDC_mention)
             if GTM_mention or RDC_mention:
-                mentions.append(str(comm) + '&nbsp;' + utils.case_to_num_link(comm.case))
-        return str(len(mentions)) + '<br>' + '<br>'.join(mentions)
+                print('GTM/RDC', comm.case)
+                print('<tr><td>', str(comm), '</td><td>', utils.case_to_num_link(comm.case), '</td><td>', comm.message, '</td></tr>')
+                inner_table += '<tr><td>' + str(comm) + '</td><td>' + utils.case_to_num_link(comm.case) + '</td><td>' + comm.message + '</td></tr>'
+                print('\t\t\t temp inner:', inner_table)
+
+        inner_table += '</table>'
+        print('\t\tinner:', inner_table)
+        return str(len(mentions)) + '<br>' + inner_table #'<br>'.join(mentions)
     
     def _feedback_to_user_within_1h(self, case, all_case_comments):
         created = case.created
