@@ -55,10 +55,15 @@ class CommentCollector:
                 print(*args, sep=sep, end=end)
 
     def _find_postpone(self, text):
-        postpones = re.finditer(r'resume chas(e|ing)( on){0,1} {0,2}(?P<day>\d\d).(?P<month>\d\d).(?P<year>\d\d\d\d)', text, flags=re.IGNORECASE)
+        postpones = re.finditer(r'resume chas(e|ing)( on){0,1} {0,2}(?P<day>\d\d).(?P<month>\d\d).(?P<year>\d\d\d?\d?)', text, flags=re.IGNORECASE)
         postpones = [ { k: int(z.groupdict()[k]) for k in z.groupdict().keys() } for z in postpones ]
         if len(postpones) > 0:
-            return datetime(tzinfo=timezone.get_default_timezone(), **postpones[0])
+            if postpones[0]['year'] > 1000:
+                return datetime(tzinfo=timezone.get_default_timezone(), **postpones[0])
+            else:
+                postpones[0]['year'] = 2000 + postpones[0]['year']
+                return datetime(tzinfo=timezone.get_default_timezone(), **postpones[0])
+
         else:
             return None
 
